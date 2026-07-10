@@ -15,6 +15,8 @@ PRESETS = {
     "4": ("107.7", "1", "Channel Q"),
     "5": ("106.1", "1", "Pride Radio"),
     "6": ("93.3", "1", "KUBE"),
+    "7": ("97.3", "0", "KIRO News"),
+    "8": ("99.9", "0", "KISW Rock"),
 }
 
 TMP_DIR = "/tmp/nrsc5_aas"
@@ -30,6 +32,7 @@ latest_metadata = {
     "artist": "Unknown Artist",
     "album": "Unknown Album",
     "genre": "Unknown Genre",
+    "slogan": "",
     "bitrate": "Unknown Bitrate",
     "art_url": "",
     "raw_log": [],
@@ -44,6 +47,7 @@ def parse_nrsc5_output(pipe):
     artist_regex = re.compile(r"Artist:\s*(.*)")
     album_regex = re.compile(r"Album:\s*(.*)")
     genre_regex = re.compile(r"Genre:\s*(.*)")
+    slogan_regex = re.compile(r"Slogan:\s*(.*)")
     bitrate_regex = re.compile(r"Audio bit rate:\s*(.*)")
 
     lot_regex = re.compile(r"LOT file:\s+port=(\w+)\s+lot=(\d+)\s+name=([a-zA-Z0-9_\-\.]+)\s+size=(\d+)\s+mime=([0-9A-F]+)")
@@ -73,6 +77,10 @@ def parse_nrsc5_output(pipe):
         g_match = genre_regex.search(line)
         if g_match:
             latest_metadata["genre"] = g_match.group(1).strip()
+
+        g_match = slogan_regex.search(line)
+        if g_match:
+            latest_metadata["slogan"] = g_match.group(1).strip()
 
         br_match = bitrate_regex.search(line)
         if br_match:
@@ -194,6 +202,7 @@ def start_nrsc5(preset_id=None, freq=None, program=None, name=None):
             "artist": "",
             "album": "",
             "genre": "",
+            "slogan": "",
             "bitrate": "",
             "art_url": "",
             "running": False
@@ -228,8 +237,9 @@ def start_nrsc5(preset_id=None, freq=None, program=None, name=None):
     latest_metadata.update({
         "title": f"Connecting to {name}...",
         "artist": "Loading...",
-        "album": "Loading...",
+        "album": "",
         "genre": "",
+        "slogan": "",
         "bitrate": "",
         "art_url": "",
         "raw_log": [],
@@ -317,6 +327,7 @@ def start_nrsc5(preset_id=None, freq=None, program=None, name=None):
             "artist": "",
             "album": "",
             "genre": "",
+            "slogan": "",
             "bitrate": "",
             "art_url": "",
             "running": False
@@ -347,6 +358,7 @@ def stop_nrsc5():
         "artist": "",
         "album": "",
         "genre": "",
+        "slogan": "",
         "bitrate": "",
         "art_url": "",
         "running": False
@@ -376,7 +388,7 @@ def stream_audio_mp3():
             '-ac', '2',             # Channels (CHANGE THIS: 1 for mono, 2 for stereo)
             '-i', 'pipe:0',         # Input from stdin
             '-f', 'mp3',            # Output format
-            '-b:a', '96k',         # Bitrate
+            '-b:a', '128k',         # Bitrate
             'pipe:1'                # Output to stdout
         ]
         
@@ -513,6 +525,7 @@ def index():
                         <h3 id="track-artist"></h3>
                         <h3 id="track-album"></h3>
                         <p id="track-genre"></p>
+                        <p id="track-slogan"></p>
                         <p id="track-bitrate"></p>
                     </div>
                     <!-- Audio element initially stopped; no autoplay -->
@@ -606,6 +619,7 @@ def index():
                             document.getElementById('track-artist').innerText = "";
                             document.getElementById('track-album').innerText = "";
                             document.getElementById('track-genre').innerText = "";
+                            document.getElementById('track-slogan').innerText = "";
                             document.getElementById('track-bitrate').innerText = "";
                             const artContainer = document.getElementById('art-container');
                             artContainer.innerHTML = 'No Art';
@@ -623,6 +637,7 @@ def index():
                         document.getElementById('track-artist').innerText = data.artist || "";
                         document.getElementById('track-album').innerText = data.album || "";
                         document.getElementById('track-genre').innerText = data.genre ? "Genre: " + data.genre : "";
+                        document.getElementById('track-slogan').innerText = data.slogan ? "" + data.slogan : "";
                         document.getElementById('track-bitrate').innerText = data.bitrate ? "Bitrate: " + data.bitrate : "";
 
                         const artContainer = document.getElementById('art-container');
@@ -653,6 +668,7 @@ def index():
                                 const rowB = parseInt(partsB[3], 10);
                                 const colB = parseInt(partsB[4], 10);
 
+
                                 // Compare Rows first
                                 if (rowA !== rowB) {
                                     return rowA - rowB;
@@ -679,7 +695,7 @@ def index():
                     });
             }
 
-            setInterval(updateStatus, 1000);
+            setInterval(updateStatus, 2000);
             updateStatus();
         </script>
     </body>
