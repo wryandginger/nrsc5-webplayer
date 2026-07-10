@@ -27,8 +27,11 @@ latest_metadata = {
     "title": "Unknown Title",
     "artist": "Unknown Artist",
     "album": "Unknown Album",
+    "genre": "Unknown Genre",
+    "bitrate": "Unknown Bitrate",
     "art_url": "",
     "raw_log": [],
+    "tmt_files": [],
     "running": False
 }
 
@@ -40,7 +43,10 @@ def parse_nrsc5_output(pipe):
     title_regex = re.compile(r"Title:\s*(.*)")
     artist_regex = re.compile(r"Artist:\s*(.*)")
     album_regex = re.compile(r"Album:\s*(.*)")
-    lot_regex = re.compile(r"LOT file\s+([a-zA-Z0-9_\-\.]+)\s+\(type:.*mime: image/jpeg\)")
+    genre_regex = re.compile(r"Genre:\s*(.*)")
+    bitrate_regex = re.compile(r"Audio bit rate:\s*(.*)")
+    lot_regex = re.compile(r"LOT file:\s+port=(\w+)\s+lot=(\d+)\s+name=([a-zA-Z0-9_\-\.]+)\s+size=(\d+)\s+mime=(\w+)\s+expiry=(.+)")
+    tmt_regex = re.compile(r"LOT file:\s+port=(\w+)\s+lot=(\d+)\s+name=(TMT_[a-zA-Z0-9_\-\.]+)\s+size=(\d+)\s+mime=(\w+)\s+expiry=(.+)")
 
     # pipe is a text-mode file object (os.fdopen on stderr fileno)
     for line in iter(pipe.readline, ""):
@@ -63,9 +69,27 @@ def parse_nrsc5_output(pipe):
         if al_match:
             latest_metadata["album"] = al_match.group(1).strip()
 
+        g_match = genre_regex.search(line)
+        if g_match:
+            latest_metadata["genre"] = g_match.group(1).strip()
+
+        br_match = bitrate_regex.search(line)
+        if br_match:
+            latest_metadata["bitrate"] = br_match.group(1).strip()
+
+        # Check for TMT files first
+        tmt_match = tmt_regex.search(line)
+        if tmt_match:
+            tmt_info = f"LOT file: port={tmt_match.group(1)} lot={tmt_match.group(2)} name={tmt_match.group(3)} size={tmt_match.group(4)} mime={tmt_match.group(5)} expiry={tmt_match.group(6)}"
+            latest_metadata["tmt_files"].append(tmt_info)
+            # Keep only last 9 TMT files
+            if len(latest_metadata["tmt_files"]) > 9:
+                latest_metadata["tmt_files"].pop(0)
+
+        # Check for regular LOT files (album art)
         lot_match = lot_regex.search(line)
-        if lot_match:
-            filename = lot_match.group(1).strip()
+        if lot_match and not tmt_match:
+            filename = lot_match.group(3).strip()
             latest_metadata["art_url"] = f"/aas/{filename}?t={int(time.time())}"
 
 def _append_log_text(txt):
@@ -94,6 +118,8 @@ def start_nrsc5(preset_id=None, freq=None, program=None, name=None):
             "title": "nrsc5 not found",
             "artist": "",
             "album": "",
+            "genre": "",
+            "bitrate": "",
             "art_url": "",
             "running": False
         })
@@ -129,8 +155,11 @@ def start_nrsc5(preset_id=None, freq=None, program=None, name=None):
         "title": f"Connecting to {name}...",
         "artist": "Loading...",
         "album": "Loading...",
+        "genre": "",
+        "bitrate": "",
         "art_url": "",
         "raw_log": [],
+        "tmt_files": [],
         "running": True
     })
 
@@ -218,6 +247,8 @@ def start_nrsc5(preset_id=None, freq=None, program=None, name=None):
             "title": "Failed to start nrsc5",
             "artist": "",
             "album": "",
+            "genre": "",
+            "bitrate": "",
             "art_url": "",
             "running": False
         })
@@ -247,6 +278,8 @@ def stop_nrsc5():
         "title": "Stopped",
         "artist": "",
         "album": "",
+        "genre": "",
+        "bitrate": "",
         "art_url": "",
         "running": False
     })
@@ -325,61 +358,77 @@ def index():
         <title>HD Radio Controller</title>
         <style>
             body { font-family: Arial, sans-serif; background: #222; color: #fff; text-align: center; padding: 20px; }
-            .container { max-width: 800px; margin: 0 auto; background: #333; padding: 20px; border-radius: 10px; }
+            .container { max-width: 900px; margin: 0 auto; display: grid; grid-template-columns: 1fr 300px; gap: 20px; }
+            .main-panel { background: #333; padding: 20px; border-radius: 10px; }
+            .tmt-panel { background: #333; padding: 20px; border-radius: 10px; height: fit-content; }
             .presets { margin-bottom: 10px; }
             button { background: #444; color: white; border: 1px solid #555; padding: 10px 15px; margin: 5px; cursor: pointer; border-radius: 5px; }
             button.active { background: #007bff; border-color: #0056b3; }
+            button#start-btn { background: #28a745; border-color: #1e7e34; }
+            button#start-btn:hover { background: #218838; }
+            button#stop-btn { background: #dc3545; border-color: #bd2130; }
+            button#stop-btn:hover { background: #c82333; }
             .controls { margin-top: 10px; }
             .player { background: #111; padding: 20px; border-radius: 10px; margin-top: 10px; }
             .album-art { width: 200px; height: 200px; background: #444; margin: 0 auto 15px; display: flex; align-items: center; justify-content: center; border-radius: 5px; overflow: hidden; }
             .album-art img { width: 100%; height: 100%; object-fit: cover; }
             .track-info h2 { margin: 5px 0; font-size: 1.4em; }
             .track-info h3 { margin: 5px 0; color: #bbb; font-size: 1.1em; }
+            .track-info p { margin: 3px 0; color: #999; font-size: 0.9em; }
             audio { width: 100%; margin-top: 15px; }
             .terminal { background: #000; color: #0f0; text-align: left; padding: 10px; font-family: monospace; height: 180px; overflow-y: scroll; font-size: 11px; margin-top: 20px; border-radius: 5px; }
-            .manual { margin-top: 12px; display:flex; justify-content:center; gap:8px; align-items:center; }
+            .manual { margin-top: 12px; display:flex; justify-content:center; gap:8px; align-items:center; flex-wrap: wrap; }
             input[type="text"] { padding:6px 8px; border-radius:4px; border:1px solid #666; background:#222; color:#fff; }
+            .tmt-panel h3 { margin-top: 0; color: #fff; }
+            .tmt-list { background: #000; color: #0f0; text-align: left; padding: 10px; font-family: monospace; height: 400px; overflow-y: scroll; font-size: 10px; border-radius: 5px; }
         </style>
     </head>
     <body>
         <div class="container">
-            <h1>HD Radio Controller</h1>
-            <div class="presets">
-                {% for id, details in presets.items() %}
-                    <button id="btn-{{ id }}" onclick="tunePreset('{{ id }}')" class="{% if id == current_preset %}active{% endif %}">
-                        {{ details[2] }} ({{ details[0] }} MHz)
-                    </button>
-                {% endfor %}
-            </div>
-
-            <div class="manual">
-                <label style="color:#ccc">Freq:</label>
-                <input id="manual-freq" type="text" placeholder="e.g. 96.5" />
-                <label style="color:#ccc">Ch:</label>
-                <input id="manual-program" type="text" placeholder="e.g. 0" />
-                <label style="color:#ccc">Name:</label>
-                <input id="manual-name" type="text" placeholder="optional station name" />
-                <button onclick="tuneManualStart()">Tune & Start</button>
-            </div>
-
-            <div class="controls">
-                <button id="start-btn" onclick="startCurrent()">Start</button>
-                <button id="stop-btn" onclick="stopStream()">Stop</button>
-            </div>
-
-            <div class="player">
-                <div class="album-art" id="art-container">No Art</div>
-                <div class="track-info">
-                    <h2 id="track-title">Stopped</h2>
-                    <h3 id="track-artist"></h3>
-                    <h3 id="track-album"></h3>
+            <div class="main-panel">
+                <h1>HD Radio Controller</h1>
+                <div class="presets">
+                    {% for id, details in presets.items() %}
+                        <button id="btn-{{ id }}" onclick="tunePreset('{{ id }}')" class="{% if id == current_preset %}active{% endif %}">
+                            {{ details[2] }} ({{ details[0] }} MHz)
+                        </button>
+                    {% endfor %}
                 </div>
-                <!-- Audio element initially stopped; no autoplay -->
-                <audio id="radio-player" controls src=""></audio>
+
+                <div class="manual">
+                    <label style="color:#ccc">Freq:</label>
+                    <input id="manual-freq" type="text" placeholder="e.g. 96.5" />
+                    <label style="color:#ccc">Ch:</label>
+                    <input id="manual-program" type="text" placeholder="e.g. 0" />
+                    <button onclick="tuneManualStart()">Tune & Start</button>
+                </div>
+
+                <div class="controls">
+                    <button id="start-btn" onclick="startCurrent()">Start</button>
+                    <button id="stop-btn" onclick="stopStream()">Stop</button>
+                </div>
+
+                <div class="player">
+                    <div class="album-art" id="art-container">No Art</div>
+                    <div class="track-info">
+                        <h2 id="track-title">Stopped</h2>
+                        <h3 id="track-artist"></h3>
+                        <h3 id="track-album"></h3>
+                        <p id="track-genre"></p>
+                        <p id="track-bitrate"></p>
+                    </div>
+                    <!-- Audio element initially stopped; no autoplay -->
+                    <audio id="radio-player" controls src=""></audio>
+                </div>
+
+                <h3>Terminal Output</h3>
+                <div class="terminal" id="log-container"></div>
             </div>
 
-            <h3>Terminal Output</h3>
-            <div class="terminal" id="log-container"></div>
+            <div class="tmt-panel">
+                <h3>TMT Files</h3>
+                <div class="tmt-list" id="tmt-container"></div>
+            </div>
         </div>
 
         <script>
@@ -420,15 +469,14 @@ def index():
             function tuneManualStart() {
                 const freq = document.getElementById('manual-freq').value.trim();
                 const program = document.getElementById('manual-program').value.trim();
-                const name = document.getElementById('manual-name').value.trim();
 
                 if (!freq || !program) {
                     alert("Please enter both frequency and channel.");
                     return;
                 }
 
-                // GET endpoint for convenience: /tune_manual?freq=...&program=...&name=...
-                const url = '/tune_manual?freq=' + encodeURIComponent(freq) + '&program=' + encodeURIComponent(program) + '&name=' + encodeURIComponent(name);
+                // GET endpoint for convenience: /tune_manual?freq=...&program=...
+                const url = '/tune_manual?freq=' + encodeURIComponent(freq) + '&program=' + encodeURIComponent(program);
                 fetch(url)
                     .then(response => response.json())
                     .then(data => {
@@ -458,6 +506,8 @@ def index():
                             document.getElementById('track-title').innerText = "Stopped";
                             document.getElementById('track-artist').innerText = "";
                             document.getElementById('track-album').innerText = "";
+                            document.getElementById('track-genre').innerText = "";
+                            document.getElementById('track-bitrate').innerText = "";
                             const artContainer = document.getElementById('art-container');
                             artContainer.innerHTML = 'No Art';
                         } else {
@@ -473,6 +523,8 @@ def index():
                         document.getElementById('track-title').innerText = data.title || "";
                         document.getElementById('track-artist').innerText = data.artist || "";
                         document.getElementById('track-album').innerText = data.album || "";
+                        document.getElementById('track-genre').innerText = data.genre ? "Genre: " + data.genre : "";
+                        document.getElementById('track-bitrate').innerText = data.bitrate ? "Bitrate: " + data.bitrate : "";
 
                         const artContainer = document.getElementById('art-container');
                         if (data.art_url) {
@@ -484,6 +536,10 @@ def index():
                         const logContainer = document.getElementById('log-container');
                         logContainer.innerHTML = (data.raw_log || []).join('<br>');
                         logContainer.scrollTop = logContainer.scrollHeight;
+
+                        const tmtContainer = document.getElementById('tmt-container');
+                        tmtContainer.innerHTML = (data.tmt_files || []).join('<br>');
+                        tmtContainer.scrollTop = tmtContainer.scrollHeight;
 
                         // Update Start/Stop UI
                         document.getElementById('start-btn').disabled = data.running;
@@ -511,17 +567,16 @@ def tune(preset_id):
 
 @app.route("/tune_manual")
 def tune_manual():
-    # Manual tuning using query parameters: ?freq=96.5&program=0&name=Optional
+    # Manual tuning using query parameters: ?freq=96.5&program=0
     freq = request.args.get("freq", "").strip()
     program = request.args.get("program", "").strip()
-    name = request.args.get("name", "").strip() or None
 
     if not freq or program == "":
         return jsonify({"status": "error", "message": "freq and program are required"}), 400
 
     try:
         # program can be integer-like; pass as string to nrsc5 as original script did
-        start_nrsc5(preset_id=None, freq=freq, program=program, name=name)
+        start_nrsc5(preset_id=None, freq=freq, program=program, name=None)
         return jsonify({"status": "success", "freq": freq, "program": program})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
