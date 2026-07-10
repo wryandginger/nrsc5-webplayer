@@ -17,3 +17,5 @@ a python webplayer for HDRadio FM Broadcasts
 - TTN Traffic data only kinda works for iHeartRadio stations. The logic in this section needs to be rewritten. If you have bad reception, this will look wonky.
 - HERE traffic data is very broken.
 - Audio will occasionally cut out due to poor reception. Consider buying a better antenna for your SDR.
+- This only works for one user. However, additional users can tune to http://IP:7430/stream.mp3 and listen to the stream.
+- No metadata is attached to the MP3 stream.
