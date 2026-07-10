@@ -2,6 +2,7 @@
 a python webplayer for HDRadio FM Broadcasts
 
 - This was vibecoded, but I did my best to clean up the code. Sorry.
+- This is an early work in progress. Any help is welcome.
    
 # Requirements:
 - An SDR Dongle (Nooelec smart nesdr, rtl-sdr, etc.)
