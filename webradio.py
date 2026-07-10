@@ -13,6 +13,7 @@ PRESETS = {
     "3": ("102.5", "1", "TikTok Radio"),
     "4": ("107.7", "1", "Channel Q"),
     "5": ("106.1", "1", "Pride Radio"),
+    "6": ("93.3", "1", "KUBE"),
 }
 
 TMP_DIR = "/tmp/nrsc5_aas"
@@ -48,7 +49,7 @@ def parse_nrsc5_output(pipe):
     bitrate_regex = re.compile(r"Audio bit rate:\s*(.*)")
     # Capture port, lot, and name - lot is prepended to filename on disk
     lot_regex = re.compile(r"LOT file:\s+port=(\w+)\s+lot=(\d+)\s+name=([a-zA-Z0-9_\-\.]+)\s+size=(\d+)\s+mime=([0-9A-F]+)")
-    tmt_regex = re.compile(r"LOT file:\s+port=(\w+)\s+lot=(\d+)\s+name=(TMT_[a-zA-Z0-9_\-\.]+)\s+size=(\d+)\s+mime=([0-9A-F]+)")
+    tmt_regex = re.compile(r"LOT file:\s+port=(\w+)\s+lot=(\d+)\s+name=(TMT_[a-zA-Z0-9_\-\.]+)\s+size=(\d+)\s+mime=([0-9A-F]+)") 
 
     # pipe is a text-mode file object (os.fdopen on stderr fileno)
     for line in iter(pipe.readline, ""):
@@ -365,7 +366,7 @@ def index():
     <html lang="en">
     <head>
         <meta charset="UTF-8">
-        <title>HD Radio Controller</title>
+        <title>Web HD Radio</title>
         <style>
             body { font-family: Arial, sans-serif; background: #222; color: #fff; text-align: center; padding: 20px; }
             .container { max-width: 900px; margin: 0 auto; display: grid; grid-template-columns: 1fr 300px; gap: 20px; }
@@ -398,7 +399,7 @@ def index():
     <body>
         <div class="container">
             <div class="main-panel">
-                <h1>HD Radio Controller</h1>
+                <h1>HD Radio Web Radio</h1>
                 <div class="presets">
                     {% for id, details in presets.items() %}
                         <button id="btn-{{ id }}" onclick="tunePreset('{{ id }}')" class="{% if id == current_preset %}active{% endif %}">
@@ -412,7 +413,7 @@ def index():
                     <input id="manual-freq" type="text" placeholder="e.g. 96.5" />
                     <label style="color:#ccc">Ch:</label>
                     <input id="manual-program" type="text" placeholder="e.g. 0" />
-                    <button onclick="tuneManualStart()">Tune & Start</button>
+                    <button onclick="tuneManualStart()">Manually Tune</button>
                 </div>
 
                 <div class="controls">
@@ -552,7 +553,29 @@ def index():
                         // Render TMT files as a 3x3 image gallery
                         const tmtContainer = document.getElementById('tmt-container');
                         tmtContainer.innerHTML = '';
+
                         if (data.tmt_files && data.tmt_files.length > 0) {
+                            // Sort the array before rendering
+                            data.tmt_files.sort((a, b) => {
+                                const partsA = a.split('_');
+                                const partsB = b.split('_');
+
+                                // Extract Grid Row (index 3) and Grid Column (index 4)
+                                // Sample: 640(0) _ TMT(1) _ 02dgt3(2) _ 1(3) _ 3(4) _ date...
+                                const rowA = parseInt(partsA[3], 10);
+                                const colA = parseInt(partsA[4], 10);
+                                const rowB = parseInt(partsB[3], 10);
+                                const colB = parseInt(partsB[4], 10);
+
+                                // Compare Rows first
+                                if (rowA !== rowB) {
+                                    return rowA - rowB;
+                                }
+        
+                                // If Rows are equal, compare Columns
+                                return colA - colB;
+                            });
+
                             data.tmt_files.forEach(filename => {
                                 const item = document.createElement('div');
                                 item.className = 'tmt-item';
