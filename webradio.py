@@ -4,6 +4,7 @@ import time
 import shutil
 import subprocess
 import threading
+from datetime import datetime
 from flask import Flask, render_template_string, jsonify, send_from_directory, Response, request
 
 # --- CONFIGURATION ---
@@ -77,22 +78,55 @@ def parse_nrsc5_output(pipe):
         if br_match:
             latest_metadata["bitrate"] = br_match.group(1).strip()
 
+        # --- Helper Function to Identify Duplicates ---
+        def get_semantic_key(filename):
+            """
+            Strips the leading lot number (digits + underscore) to find the base filename.
+            Example: '330_TMT_...' becomes 'TMT_...'
+                     '1782693289_trafficMap_...' becomes 'trafficMap_...'
+            """
+            match = re.match(r'^\d+_(.*)', filename)
+            return match.group(1) if match else filename
+
+        def add_file_deduplicated(file_list, new_file, max_limit=9):
+            """
+            Adds new_file to file_list, removing any existing file with the same 
+            semantic key (treating the new one as the newer duplicate).
+            """
+            new_key = get_semantic_key(new_file)
+    
+            # Filter out any existing file that matches the new file's semantic key
+            # This effectively removes the 'older' duplicate
+            filtered_list = [f for f in file_list if get_semantic_key(f) != new_key]
+    
+            # Append the new (newer) file
+            filtered_list.append(new_file)
+    
+            # Enforce the max limit (keep the most recent 9)
+            if len(filtered_list) > max_limit:
+                filtered_list.pop(0)
+        
+            return filtered_list
+
         # Check for TMT files (traffic/metadata files - keep for display)
         tmt_match = tmt_regex.search(line)
         if tmt_match:
             lot_num = tmt_match.group(2).strip()
             filename = tmt_match.group(3).strip()
-            # File is stored as: <lot>_<filename>
             actual_filename = f"{lot_num}_{filename}"
-            latest_metadata["tmt_files"].append(actual_filename)
-            # Keep only last 9 TMT files
-            if len(latest_metadata["tmt_files"]) > 9:
-                latest_metadata["tmt_files"].pop(0)
+    
+            # Use the helper function instead of direct append
+            latest_metadata["tmt_files"] = add_file_deduplicated(
+                latest_metadata["tmt_files"], 
+                actual_filename, 
+                max_limit=9
+            )
 
         # Checks for HERE traffic files --keep for display
         here_regex = re.compile(
             r"HERE Image:\s+type=(?P<type>\w+).*?"
-            r"seq=(?P<lot>\d+).*?"
+            r"seq=(?P<seq>\d+).*?"  # seq is captured but NOT used in filename
+            r"time=(?P<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z).*?"
             r"name=(?P<filename>trafficMap_[0-3]_[0-3]_[^,\s]+).*?"
             r"size=(?P<size>\d+)",
             re.IGNORECASE
@@ -101,18 +135,22 @@ def parse_nrsc5_output(pipe):
         # Check for Traffic Map files
         tmt_match = here_regex.search(line)
         if tmt_match:
-            # Extract using named groups for clarity and safety
-            lot_num = tmt_match.group("lot").strip()
+            # Convert ISO timestamp to Unix timestamp
+            time_str = tmt_match.group("timestamp").strip()
+            dt = datetime.strptime(time_str, "%Y-%m-%dT%H:%M:%SZ")
+            unix_timestamp = int(dt.timestamp())
+
+            # Get the base filename
             filename = tmt_match.group("filename").strip()
-    
-            # File is stored as: <lot>_<filename>
-            actual_filename = f"{lot_num}_{filename}"
-    
-            latest_metadata["tmt_files"].append(actual_filename)
-    
-            # Keep only last 9 TMT files
-            if len(latest_metadata["tmt_files"]) > 9:
-                latest_metadata["tmt_files"].pop(0)
+            # Construct the full filename with Unix timestamp prefix
+            actual_filename = f"{unix_timestamp}_{filename}"
+
+            # Use the helper function instead of direct append
+            latest_metadata["tmt_files"] = add_file_deduplicated(
+                latest_metadata["tmt_files"], 
+                actual_filename, 
+                max_limit=9
+            )
 
 
 
