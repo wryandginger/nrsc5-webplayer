@@ -18,11 +18,10 @@ PRESETS = {
 
 TMP_DIR = "/tmp/nrsc5_aas"
 os.makedirs(TMP_DIR, exist_ok=True)
-os.chmod(TMP_DIR, 0o777)  # Ensure readable
+os.chmod(TMP_DIR, 0o777) 
 
 app = Flask(__name__)
 
-# --- GLOBAL STATE ---
 current_preset = "1"
 nrsc5_process = None
 latest_metadata = {
@@ -37,9 +36,7 @@ latest_metadata = {
     "running": False
 }
 
-# --- METADATA & PARSING LOGIC ---
 def parse_nrsc5_output(pipe):
-    """Reads nrsc5 stderr line by line to extract metadata and AAS updates."""
     global latest_metadata
 
     title_regex = re.compile(r"Title:\s*(.*)")
@@ -47,11 +44,10 @@ def parse_nrsc5_output(pipe):
     album_regex = re.compile(r"Album:\s*(.*)")
     genre_regex = re.compile(r"Genre:\s*(.*)")
     bitrate_regex = re.compile(r"Audio bit rate:\s*(.*)")
-    # Capture port, lot, and name - lot is prepended to filename on disk
+
     lot_regex = re.compile(r"LOT file:\s+port=(\w+)\s+lot=(\d+)\s+name=([a-zA-Z0-9_\-\.]+)\s+size=(\d+)\s+mime=([0-9A-F]+)")
     tmt_regex = re.compile(r"LOT file:\s+port=(\w+)\s+lot=(\d+)\s+name=(TMT_[a-zA-Z0-9_\-\.]+)\s+size=(\d+)\s+mime=([0-9A-F]+)") 
 
-    # pipe is a text-mode file object (os.fdopen on stderr fileno)
     for line in iter(pipe.readline, ""):
         if not line:
             break
@@ -104,7 +100,6 @@ def parse_nrsc5_output(pipe):
                 latest_metadata["art_url"] = f"/aas/{actual_filename}?t={int(time.time())}"
 
 def _append_log_text(txt):
-    """Helper to append multi-line text to raw_log safely."""
     global latest_metadata
     if not txt:
         return
@@ -115,12 +110,7 @@ def _append_log_text(txt):
         latest_metadata["raw_log"] = latest_metadata["raw_log"][-400:]
 
 def start_nrsc5(preset_id=None, freq=None, program=None, name=None):
-    """
-    Stops any running instance of nrsc5 and starts a new one.
-    - If preset_id is provided and known, use that preset.
-    - Otherwise freq and program (channel) must be provided.
-    The implementation writes a WAV file to TMP_DIR/stream.wav and tails it for clients.
-    """
+
     global nrsc5_process, latest_metadata, current_preset
 
     # Ensure nrsc5 exists
@@ -150,7 +140,6 @@ def start_nrsc5(preset_id=None, freq=None, program=None, name=None):
         name = name or f"{freq} / ch {program}"
         current_preset = None
 
-    # Gracefully stop any existing process first
     if nrsc5_process:
         try:
             nrsc5_process.terminate()
@@ -181,14 +170,13 @@ def start_nrsc5(preset_id=None, freq=None, program=None, name=None):
         except Exception:
             pass
 
-    # Use a fixed filename so we can stream it while nrsc5 writes
     out_path = os.path.join(TMP_DIR, "stream.wav")
 
-    # Try a sequence of candidate commands; if one fails quickly, log stderr and try the next.
+    # Tries different devices for multiple SDRs.
     candidate_cmds = [
-        ["nrsc5", freq, program, "-o", out_path, "--dump-aas-files", TMP_DIR],                 # your working form with long option
-        ["nrsc5", freq, program, "-o", out_path, "-t", "wav", "--dump-aas-files", TMP_DIR],    # explicit type
-        ["nrsc5", freq, program, "-o", out_path],                                            # minimal
+        ["nrsc5", "-d 0", freq, program, "-o", out_path, "--dump-aas-files", TMP_DIR],    # Device 0
+        ["nrsc5", "-d 1", freq, program, "-o", out_path, "--dump-aas-files", TMP_DIR],    # Device 1
+        ["nrsc5", freq, program, "-o", out_path, "--dump-aas-files", TMP_DIR],            # minimal
     ]
 
     started = False
@@ -198,7 +186,7 @@ def start_nrsc5(preset_id=None, freq=None, program=None, name=None):
         try:
             p = subprocess.Popen(
                 cmd,
-                stdout=subprocess.DEVNULL,   # nrsc5 writes the WAV file instead of stdout
+                stdout=subprocess.DEVNULL,   
                 stderr=subprocess.PIPE,
                 text=False,
                 bufsize=4096
@@ -207,20 +195,17 @@ def start_nrsc5(preset_id=None, freq=None, program=None, name=None):
             _append_log_text(f"Failed to spawn nrsc5: {e}")
             continue
 
-        # Wait briefly to see if process exits immediately (bad args)
         timeout = 0.6
         waited = 0.0
         interval = 0.05
         while waited < timeout:
             ret = p.poll()
             if ret is not None:
-                # process exited quickly
                 break
             time.sleep(interval)
             waited += interval
 
         if p.poll() is None:
-            # process still running -> success; hook up stderr parser and adopt this process
             nrsc5_process = p
             try:
                 stderr_text_wrapper = os.fdopen(nrsc5_process.stderr.fileno(), 'r', errors='ignore')
@@ -231,7 +216,6 @@ def start_nrsc5(preset_id=None, freq=None, program=None, name=None):
             _append_log_text("nrsc5 started successfully.")
             break
         else:
-            # process died; collect stderr for diagnostics
             try:
                 err = p.stderr.read() or b""
             except Exception:
@@ -269,7 +253,6 @@ def start_nrsc5(preset_id=None, freq=None, program=None, name=None):
         raise RuntimeError("nrsc5 failed to start; check raw_log for details")
 
 def stop_nrsc5():
-    """Gracefully stop the nrsc5 process (terminate -> wait -> kill) and mark not running."""
     global nrsc5_process, latest_metadata
     if not nrsc5_process:
         latest_metadata["running"] = False
@@ -297,66 +280,94 @@ def stop_nrsc5():
     _append_log_text("nrsc5 stopped by user.")
 
 # --- AUDIO STREAMING GENERATOR ---
-def stream_audio():
-    """Streams the TMP_DIR/stream.wav file as it is written by nrsc5 (follows file growth)."""
+def stream_audio_mp3():
     out_path = os.path.join(TMP_DIR, "stream.wav")
 
-    # Wait until the file exists or until not running
     start_wait = 0.0
     while True:
         if os.path.exists(out_path):
             break
         if not latest_metadata.get("running"):
-            # nothing to stream
             return
         time.sleep(0.1)
         start_wait += 0.1
-        # safety: if it's taking too long, yield nothing
-        if start_wait > 15 and not os.path.exists(out_path):
+        if start_wait > 15:
             _append_log_text("Timeout waiting for stream.wav to appear.")
-            return
-
-    # Open and tail the file. If nrsc5 replaces/truncates the file, reopen it.
-    last_inode = None
-    f = None
+            return    
     try:
-        while latest_metadata.get("running") or (nrsc5_process is not None):
-            try:
-                st = os.stat(out_path)
-                if f is None:
-                    f = open(out_path, "rb")
-                    last_inode = st.st_ino
-                else:
-                    # If file was replaced/rotated, reopen
-                    if st.st_ino != last_inode:
-                        try:
-                            f.close()
-                        except Exception:
-                            pass
-                        f = open(out_path, "rb")
-                        last_inode = st.st_ino
+        ffmpeg_cmd = [
+            'ffmpeg',
+            '-f', 's16le',          # Input format: 16-bit signed little-endian PCM
+            '-ar', '44100',         # Sample Rate (CHANGE THIS to match your WAV: 24000, 44100, etc.)
+            '-ac', '2',             # Channels (CHANGE THIS: 1 for mono, 2 for stereo)
+            '-i', 'pipe:0',         # Input from stdin
+            '-f', 'mp3',            # Output format
+            '-b:a', '96k',         # Bitrate
+            'pipe:1'                # Output to stdout
+        ]
+        
+        process = subprocess.Popen(
+            ffmpeg_cmd, 
+            stdin=subprocess.PIPE, 
+            stdout=subprocess.PIPE, 
+            stderr=subprocess.PIPE
+        )
 
-                chunk = f.read(4096)
-                if chunk:
-                    yield chunk
-                else:
-                    # No new data yet
-                    time.sleep(0.05)
-            except FileNotFoundError:
-                # Wait until nrsc5 creates it again
-                if f:
-                    try:
-                        f.close()
-                    except Exception:
-                        pass
-                    f = None
-                time.sleep(0.1)
-    finally:
-        if f:
+        last_inode = None
+        f = None
+        
+        def file_reader():
+            nonlocal f, last_inode
             try:
-                f.close()
-            except Exception:
-                pass
+                while latest_metadata.get("running") or (nrsc5_process is not None):
+                    try:
+                        st = os.stat(out_path)
+                        
+                        if f is None or st.st_ino != last_inode:
+                            if f:
+                                try: f.close()
+                                except: pass
+                            f = open(out_path, "rb")
+                            last_inode = st.st_ino
+
+                        chunk = f.read(4096)
+                        if chunk:
+                            process.stdin.write(chunk)
+                        else:
+                            time.sleep(0.05)
+                    except FileNotFoundError:
+                        if f:
+                            try: f.close()
+                            except: pass
+                        f = None
+                        time.sleep(0.1)
+            except Exception as e:
+                _append_log_text(f"Reader error: {e}")
+            finally:
+                if f:
+                    try: f.close()
+                    except: pass
+                if process.stdin:
+                    process.stdin.close()
+
+        reader_thread = threading.Thread(target=file_reader, daemon=True)
+        reader_thread.start()
+
+        while True:
+            output = process.stdout.read(4096)
+            if not output:
+                # Check if process died
+                if process.poll() is not None:
+                    break
+                time.sleep(0.05)
+                continue
+            yield output
+
+    finally:
+        if process:
+            process.terminate()
+            process.wait()
+
 
 # --- FLASK ROUTES ---
 @app.route("/")
@@ -460,7 +471,7 @@ def index():
 
             function startCurrent() {
                 if (!selectedPreset) {
-                    alert("Select a preset or use Tune & Start for manual tuning.");
+                    alert("Select a preset or press 'Manually Tune' to play.");
                     return;
                 }
                 // call /tune/<preset> to start nrsc5 on server and then point the audio to the stream
@@ -470,7 +481,7 @@ def index():
                         if (data.status === 'success') {
                             const player = document.getElementById('radio-player');
                             // cache-bust param
-                            player.src = '/audio.wav?t=' + Date.now();
+                            player.src = '/stream.mp3?t=' + Date.now();
                             player.load();
                             player.play().catch(()=>{});
                         } else {
@@ -498,7 +509,7 @@ def index():
                             selectedPreset = '';
                             // Start the audio element
                             const player = document.getElementById('radio-player');
-                            player.src = '/audio.wav?t=' + Date.now();
+                            player.src = '/stream.mp3?t=' + Date.now();
                             player.load();
                             player.play().catch(()=>{});
                         } else {
@@ -621,7 +632,6 @@ def tune_manual():
         return jsonify({"status": "error", "message": "freq and program are required"}), 400
 
     try:
-        # program can be integer-like; pass as string to nrsc5 as original script did
         start_nrsc5(preset_id=None, freq=freq, program=program, name=None)
         return jsonify({"status": "success", "freq": freq, "program": program})
     except Exception as e:
@@ -636,17 +646,21 @@ def stop():
 def status():
     return jsonify(latest_metadata)
 
-@app.route("/audio.wav")
+@app.route('/stream.mp3')
 def audio_stream():
-    # Returns chunked WAV audio stream directly to the web browser
-    # We stream the stream.wav file that nrsc5 is writing into TMP_DIR
-    return Response(stream_audio(), mimetype="audio/wav")
+    return Response(
+        stream_audio_mp3(),
+        mimetype='audio/mpeg',
+        headers={
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+        }
+    )
 
 @app.route("/aas/<filename>")
 def get_aas_file(filename):
-    # Safely serves parsed images from the tmp folder directly to the frontend
     return send_from_directory(TMP_DIR, filename)
 
 if __name__ == "__main__":
-    # Do NOT start nrsc5 here — page starts stopped. Press Start on the web UI to connect.
     app.run(host="0.0.0.0", port=7430, debug=False)
