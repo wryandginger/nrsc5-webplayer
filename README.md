@@ -14,8 +14,7 @@ a python webplayer for HDRadio FM Broadcasts
 - Presets are for the Seattle market. Adjust the script to your area/tastes.
 
 # Known bugs:
-- TTN Traffic data only kinda works for iHeartRadio stations. The logic in this section needs to be rewritten. If you have bad reception, this will look wonky.
-- HERE traffic data is very broken.
+- TTN Traffic data should display correctly, but HERE traffic data is jumbled due to lazy sort logic.
 - Audio will occasionally cut out due to poor reception. Consider buying a better antenna for your SDR.
 - This only works for one user. However, additional users can tune to http://IP:7430/stream.mp3 and listen to the stream.
 - No metadata is attached to the MP3 stream.
