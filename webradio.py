@@ -46,7 +46,8 @@ def parse_nrsc5_output(pipe):
     bitrate_regex = re.compile(r"Audio bit rate:\s*(.*)")
 
     lot_regex = re.compile(r"LOT file:\s+port=(\w+)\s+lot=(\d+)\s+name=([a-zA-Z0-9_\-\.]+)\s+size=(\d+)\s+mime=([0-9A-F]+)")
-    tmt_regex = re.compile(r"LOT file:\s+port=(\w+)\s+lot=(\d+)\s+name=(TMT_[a-zA-Z0-9_\-\.]+)\s+size=(\d+)\s+mime=([0-9A-F]+)") 
+    tmt_regex = re.compile(r"LOT file:\s+port=(\w+)\s+lot=(\d+)\s+name=(TMT_[a-zA-Z0-9_\-\.]+)\s+size=(\d+)\s+mime=([0-9A-F]+)")
+    here_regex = re.compile(r"HERE Image:\s+type=(\w+).*?name=(trafficMap_[0-3]_[0-3]_[^,\s]+).*?size=(\d+)")   
 
     for line in iter(pipe.readline, ""):
         if not line:
@@ -88,13 +89,48 @@ def parse_nrsc5_output(pipe):
             if len(latest_metadata["tmt_files"]) > 9:
                 latest_metadata["tmt_files"].pop(0)
 
+        # Checks for HERE traffic files --keep for display
+        here_regex = re.compile(
+            r"HERE Image:\s+type=(?P<type>\w+).*?"
+            r"seq=(?P<lot>\d+).*?"
+            r"name=(?P<filename>trafficMap_[0-3]_[0-3]_[^,\s]+).*?"
+            r"size=(?P<size>\d+)",
+            re.IGNORECASE
+        )
+
+        # Check for Traffic Map files
+        tmt_match = here_regex.search(line)
+        if tmt_match:
+            # Extract using named groups for clarity and safety
+            lot_num = tmt_match.group("lot").strip()
+            filename = tmt_match.group("filename").strip()
+    
+            # File is stored as: <lot>_<filename>
+            actual_filename = f"{lot_num}_{filename}"
+    
+            latest_metadata["tmt_files"].append(actual_filename)
+    
+            # Keep only last 9 TMT files
+            if len(latest_metadata["tmt_files"]) > 9:
+                latest_metadata["tmt_files"].pop(0)
+
+
+
         # Check for regular LOT files that are NOT TMT (album art candidates)
         lot_match = lot_regex.search(line)
         if lot_match and not tmt_match:
             lot_num = lot_match.group(2).strip()
             filename = lot_match.group(3).strip()
+
             # Only set as album art if filename has image extension
             if filename.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp')):
+                filename_lower = filename.lower()
+                # Explicitly exclude 
+                if ('tmt_' in filename_lower or 
+                    'weather' in filename_lower or 
+                    'traffic' in filename_lower or 
+                    'dwro' in filename_lower):
+                    continue  # Skip this file
                 # File is stored as: <lot>_<filename>
                 actual_filename = f"{lot_num}_{filename}"
                 latest_metadata["art_url"] = f"/aas/{actual_filename}?t={int(time.time())}"
@@ -444,15 +480,16 @@ def index():
                     <!-- Audio element initially stopped; no autoplay -->
                     <audio id="radio-player" controls src=""></audio>
                 </div>
-
+            
+                <div class="tmt-panel">
+                <h3>Traffic</h3>
+                <div class="tmt-gallery" id="tmt-container"></div>
+            </div>
                 <h3>Terminal Output</h3>
                 <div class="terminal" id="log-container"></div>
             </div>
 
-            <div class="tmt-panel">
-                <h3>Traffic</h3>
-                <div class="tmt-gallery" id="tmt-container"></div>
-            </div>
+
         </div>
 
         <script>
