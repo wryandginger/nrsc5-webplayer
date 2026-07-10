@@ -17,6 +17,7 @@ PRESETS = {
 
 TMP_DIR = "/tmp/nrsc5_aas"
 os.makedirs(TMP_DIR, exist_ok=True)
+os.chmod(TMP_DIR, 0o777)  # Ensure readable
 
 app = Flask(__name__)
 
@@ -45,8 +46,9 @@ def parse_nrsc5_output(pipe):
     album_regex = re.compile(r"Album:\s*(.*)")
     genre_regex = re.compile(r"Genre:\s*(.*)")
     bitrate_regex = re.compile(r"Audio bit rate:\s*(.*)")
-    lot_regex = re.compile(r"LOT file:\s+port=(\w+)\s+lot=(\d+)\s+name=([a-zA-Z0-9_\-\.]+)\s+size=(\d+)\s+mime=(\w+)\s+expiry=(.+)")
-    tmt_regex = re.compile(r"LOT file:\s+port=(\w+)\s+lot=(\d+)\s+name=(TMT_[a-zA-Z0-9_\-\.]+)\s+size=(\d+)\s+mime=(\w+)\s+expiry=(.+)")
+    # Capture port, lot, and name - lot is prepended to filename on disk
+    lot_regex = re.compile(r"LOT file:\s+port=(\w+)\s+lot=(\d+)\s+name=([a-zA-Z0-9_\-\.]+)\s+size=(\d+)\s+mime=([0-9A-F]+)")
+    tmt_regex = re.compile(r"LOT file:\s+port=(\w+)\s+lot=(\d+)\s+name=(TMT_[a-zA-Z0-9_\-\.]+)\s+size=(\d+)\s+mime=([0-9A-F]+)")
 
     # pipe is a text-mode file object (os.fdopen on stderr fileno)
     for line in iter(pipe.readline, ""):
@@ -77,20 +79,28 @@ def parse_nrsc5_output(pipe):
         if br_match:
             latest_metadata["bitrate"] = br_match.group(1).strip()
 
-        # Check for TMT files first
+        # Check for TMT files (traffic/metadata files - keep for display)
         tmt_match = tmt_regex.search(line)
         if tmt_match:
-            tmt_info = f"LOT file: port={tmt_match.group(1)} lot={tmt_match.group(2)} name={tmt_match.group(3)} size={tmt_match.group(4)} mime={tmt_match.group(5)} expiry={tmt_match.group(6)}"
-            latest_metadata["tmt_files"].append(tmt_info)
+            lot_num = tmt_match.group(2).strip()
+            filename = tmt_match.group(3).strip()
+            # File is stored as: <lot>_<filename>
+            actual_filename = f"{lot_num}_{filename}"
+            latest_metadata["tmt_files"].append(actual_filename)
             # Keep only last 9 TMT files
             if len(latest_metadata["tmt_files"]) > 9:
                 latest_metadata["tmt_files"].pop(0)
 
-        # Check for regular LOT files (album art)
+        # Check for regular LOT files that are NOT TMT (album art candidates)
         lot_match = lot_regex.search(line)
         if lot_match and not tmt_match:
+            lot_num = lot_match.group(2).strip()
             filename = lot_match.group(3).strip()
-            latest_metadata["art_url"] = f"/aas/{filename}?t={int(time.time())}"
+            # Only set as album art if filename has image extension
+            if filename.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp')):
+                # File is stored as: <lot>_<filename>
+                actual_filename = f"{lot_num}_{filename}"
+                latest_metadata["art_url"] = f"/aas/{actual_filename}?t={int(time.time())}"
 
 def _append_log_text(txt):
     """Helper to append multi-line text to raw_log safely."""
@@ -380,7 +390,9 @@ def index():
             .manual { margin-top: 12px; display:flex; justify-content:center; gap:8px; align-items:center; flex-wrap: wrap; }
             input[type="text"] { padding:6px 8px; border-radius:4px; border:1px solid #666; background:#222; color:#fff; }
             .tmt-panel h3 { margin-top: 0; color: #fff; }
-            .tmt-list { background: #000; color: #0f0; text-align: left; padding: 10px; font-family: monospace; height: 400px; overflow-y: scroll; font-size: 10px; border-radius: 5px; }
+            .tmt-gallery { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 10px; background: #000; border-radius: 5px; max-height: 400px; overflow-y: auto; }
+            .tmt-item { width: 100%; aspect-ratio: 1 / 1; background: #222; border-radius: 4px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+            .tmt-item img { width: 100%; height: 100%; object-fit: cover; }
         </style>
     </head>
     <body>
@@ -426,8 +438,8 @@ def index():
             </div>
 
             <div class="tmt-panel">
-                <h3>TMT Files</h3>
-                <div class="tmt-list" id="tmt-container"></div>
+                <h3>Album Art Gallery</h3>
+                <div class="tmt-gallery" id="tmt-container"></div>
             </div>
         </div>
 
@@ -537,9 +549,20 @@ def index():
                         logContainer.innerHTML = (data.raw_log || []).join('<br>');
                         logContainer.scrollTop = logContainer.scrollHeight;
 
+                        // Render TMT files as a 3x3 image gallery
                         const tmtContainer = document.getElementById('tmt-container');
-                        tmtContainer.innerHTML = (data.tmt_files || []).join('<br>');
-                        tmtContainer.scrollTop = tmtContainer.scrollHeight;
+                        tmtContainer.innerHTML = '';
+                        if (data.tmt_files && data.tmt_files.length > 0) {
+                            data.tmt_files.forEach(filename => {
+                                const item = document.createElement('div');
+                                item.className = 'tmt-item';
+                                const img = document.createElement('img');
+                                img.src = '/aas/' + encodeURIComponent(filename) + '?t=' + Date.now();
+                                img.alt = filename;
+                                item.appendChild(img);
+                                tmtContainer.appendChild(item);
+                            });
+                        }
 
                         // Update Start/Stop UI
                         document.getElementById('start-btn').disabled = data.running;
