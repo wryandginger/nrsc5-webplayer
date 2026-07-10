@@ -438,7 +438,7 @@ def index():
             </div>
 
             <div class="tmt-panel">
-                <h3>Album Art Gallery</h3>
+                <h3>Traffic</h3>
                 <div class="tmt-gallery" id="tmt-container"></div>
             </div>
         </div>
@@ -557,7 +557,7 @@ def index():
                                 const item = document.createElement('div');
                                 item.className = 'tmt-item';
                                 const img = document.createElement('img');
-                                img.src = '/aas/' + encodeURIComponent(filename) + '?t=' + Date.now();
+                                img.src = '/aas/' + encodeURIComponent(filename);
                                 img.alt = filename;
                                 item.appendChild(img);
                                 tmtContainer.appendChild(item);
