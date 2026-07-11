@@ -371,7 +371,7 @@ def stop_nrsc5():
             env.pop('WERKZEUG_SERVER_FD', None)
             
             subprocess.run(
-                ["sudo", "usbreset", "RTL2838UHIDIR"], 
+                ["usbreset", "RTL2838UHIDIR"], 
                 check=True,
                 env=env,
                 close_fds=True,  # CRITICAL: Closes inherited Flask file descriptors
