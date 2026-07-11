@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y \
     librtlsdr-dev \
     libusb-1.0-0-dev \
     pkg-config \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Clone and compile libnrsc5 (The core C library)
