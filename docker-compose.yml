@@ -9,5 +9,6 @@ services:
     devices:
       - /dev/bus/usb:/dev/bus/usb
     environment:
-      - TZ=America/New_York
+      - TZ=America/Los_Angeles
+    network_mode: "host"
     restart: unless-stopped
