@@ -13,3 +13,5 @@ services:
       - TZ=UTC
     network_mode: "bridge"
     restart: unless-stopped
+    stdin_open: true   # Keeps STDIN open even if not attached
+    tty: true          # Allocates a pseudo-TTY
