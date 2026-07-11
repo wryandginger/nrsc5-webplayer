@@ -1,4 +1,5 @@
 import os
+import signal
 import re
 import time
 import shutil
@@ -259,7 +260,7 @@ def start_nrsc5(preset_id=None, freq=None, program=None, name=None):
     # Tries different devices for multiple SDRs.
     candidate_cmds = [
         ["nrsc5", "-d 0", freq, program, "-o", out_path, "--dump-aas-files", TMP_DIR],    # Device 0
-        ["nrsc5", "-d 1", freq, program, "-o", out_path, "--dump-aas-files", TMP_DIR],    # Device 1
+        ["nrsc5", "-d 0", freq, program, "-o", out_path, "--dump-aas-files", TMP_DIR],    # Device 1
         ["nrsc5", freq, program, "-o", out_path, "--dump-aas-files", TMP_DIR],            # minimal
     ]
 
@@ -345,12 +346,50 @@ def stop_nrsc5():
 
     try:
         nrsc5_process.terminate()
-        nrsc5_process.wait(timeout=5)
-    except Exception:
+        nrsc5_process.communicate(timeout=5)
+    except subprocess.TimeoutExpired:
         try:
             nrsc5_process.kill()
+            nrsc5_process.communicate(timeout=2)
         except Exception:
             pass
+    except Exception:
+        pass
+    finally:
+        try:
+            # Clean environment to remove Flask-specific FD variables
+            env = os.environ.copy()
+            env.pop('WERKZEUG_SERVER_FD', None)
+            
+            subprocess.run(
+                ["sudo", "usbreset", "RTL2838UHIDIR"], 
+                check=True,
+                env=env,
+                close_fds=True,  # CRITICAL: Closes inherited Flask file descriptors
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        except subprocess.CalledProcessError:
+            # Only log if the command actually fails (non-zero exit)
+            print("Error: usbreset failed to execute.")
+        except OSError as e:
+            # Ignore Errno 9 if the command likely succeeded (race condition in cleanup)
+            if e.errno != 9:
+                print(f"OS Error during reset: {e}")
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+
+        latest_metadata["running"] = False
+
+    if nrsc5_process.stdin:
+        try: nrsc5_process.stdin.close()
+        except: pass
+    if nrsc5_process.stdout:
+        try: nrsc5_process.stdout.close()
+        except: pass
+    if nrsc5_process.stderr:
+        try: nrsc5_process.stderr.close()
+        except: pass
 
     nrsc5_process = None
     latest_metadata.update({
