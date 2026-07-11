@@ -1,63 +1,44 @@
-FROM python:3.9-alpine
+FROM python:3.9-slim
 
-# Enable community repo (needed for some dev packages like libao-dev)
-RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories && \
-    echo "http://dl-cdn.alpinelinux.org/alpine/edge/main" >> /etc/apk/repositories
-
+# Set working directory
 WORKDIR /app
 
-# Install build dependencies
-RUN apk add --no-cache --virtual .build-deps \
+# Install system dependencies required to build libnrsc5 and run python
+RUN apt-get update && apt-get install -y \
     git \
-    build-base \
+    build-essential \
     cmake \
     autoconf \
-    automake \
     libtool \
     libao-dev \
-    fftw-dev \
-    libusb-dev \
-    pkgconfig \
-    ffmpeg-dev \
-    eudev-dev \
-    linux-headers \
-    && \
-    # 1. Build librtlsdr from source (Alpine's package is often incomplete for building)
-    git clone https://github.com/osmocom/rtl-sdr.git /tmp/rtl-sdr && \
-    cd /tmp/rtl-sdr && \
-    mkdir build && cd build && \
-    cmake .. -DDETACH_KERNEL_DRIVER=ON && \
-    make && \
-    make install && \
-    cd /tmp && rm -rf rtl-sdr && \
-    # 2. Build libnrsc5
-    git clone https://github.com/theori-io/nrsc5.git /tmp/nrsc5 && \
-    cd /tmp/nrsc5 && \
-    mkdir build && cd build && \
-    cmake .. && \
-    make && \
-    make install && \
-    ldconfig && \
-    rm -rf /tmp/nrsc5 && \
-    # Remove build dependencies
-    apk del .build-deps
+    libfftw3-dev \
+    librtlsdr-dev \
+    libusb-1.0-0-dev \
+    pkg-config \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install runtime dependencies
-RUN apk add --no-cache \
-    libusb-1.0 \
-    librtlsdr \
-    ffmpeg-libs \
-    libao \
-    eudev \
-    usbutils
+# Clone and compile libnrsc5 (The core C library)
+RUN git clone https://github.com/theori-io/nrsc5.git /tmp/nrsc5 \
+    && cd /tmp/nrsc5 \
+    && mkdir build && cd build \
+    && cmake .. \
+    && make \
+    && make install \
+    && ldconfig \
+    && rm -rf /tmp/nrsc5
 
 # Install Python dependencies
-RUN pip install --no-cache-dir flask
+RUN pip install flask
 
-# Copy application code
+# If no requirements.txt exists in the repo, uncomment the line below instead:
+# RUN pip install --no-cache-dir flask
+
+# Copy the application code
 COPY . .
 
+# Expose the web player port
 EXPOSE 7430
 
-# Trigger udev and run
-CMD ["sh", "-c", "udev-trigger || true && python3 webradio.py"]
+# Run the specific script requested
+CMD ["python3", "webradio.py"]   
