@@ -812,4 +812,4 @@ def get_aas_file(filename):
     return send_from_directory(TMP_DIR, filename)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=7430, debug=False)
+    app.run(host="0.0.0.0", port=7430, debug=False, use_reloader=False, use_debugger=False)
