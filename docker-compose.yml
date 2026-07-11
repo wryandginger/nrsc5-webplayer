@@ -4,6 +4,7 @@ services:
   nrsc5-webplayer:
     build: .
     container_name: nrsc5-webplayer
+    privileged: true
     ports:
       - "7430:7430"
     devices:
