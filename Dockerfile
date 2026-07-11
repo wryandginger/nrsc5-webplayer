@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y \
     libusb-1.0-0-dev \
     pkg-config \
     ffmpeg \
+    usbutils \
     && rm -rf /var/lib/apt/lists/*
 
 # Clone and compile libnrsc5 (The core C library)
