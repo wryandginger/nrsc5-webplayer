@@ -10,14 +10,17 @@ from flask import Flask, render_template_string, jsonify, send_from_directory, R
 
 # --- CONFIGURATION ---
 PRESETS = {
-    "1": ("95.7", "0", "The Jet"),
+    "1": ("103.7", "0", "HOT 103"),
     "2": ("96.5", "0", "JackFM"),
     "3": ("102.5", "1", "TikTok Radio"),
     "4": ("107.7", "1", "Channel Q"),
     "5": ("106.1", "1", "Pride Radio"),
     "6": ("93.3", "1", "KUBE"),
     "7": ("97.3", "0", "KIRO News"),
-    "8": ("99.9", "0", "KISW Rock"),
+    "8": ("92.5", "0", "Movin' 92.5"),
+    "9": ("94.9", "0", "KUOW/NPR"),
+    "10": ("98.1", "1", "Classical/Calm"),
+    
 }
 
 TMP_DIR = "/tmp/nrsc5_aas"
