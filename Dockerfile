@@ -1,44 +1,51 @@
-FROM python:3.9-slim
+FROM python:3.9-alpine
 
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies required to build libnrsc5 and run python
-RUN apt-get update && apt-get install -y \
+# Install system build and runtime dependencies
+RUN apk add --no-cache --virtual .build-deps \
     git \
-    build-essential \
+    build-base \
     cmake \
     autoconf \
+    automake \
     libtool \
     libao-dev \
-    libfftw3-dev \
+    fftw-dev \
     librtlsdr-dev \
-    libusb-1.0-0-dev \
-    pkg-config \
-    ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
-
-# Clone and compile libnrsc5 (The core C library)
-RUN git clone https://github.com/theori-io/nrsc5.git /tmp/nrsc5 \
-    && cd /tmp/nrsc5 \
-    && mkdir build && cd build \
-    && cmake .. \
-    && make \
-    && make install \
-    && ldconfig \
-    && rm -rf /tmp/nrsc5
+    libusb-dev \
+    pkgconfig \
+    ffmpeg-dev \
+    eudev \
+    usbutils \
+    && \
+    # Clone and compile libnrsc5
+    git clone https://github.com/theori-io/nrsc5.git /tmp/nrsc5 && \
+    cd /tmp/nrsc5 && \
+    mkdir build && cd build && \
+    cmake .. && \
+    make && \
+    make install && \
+    ldconfig && \
+    rm -rf /tmp/nrsc5 && \
+    # Remove build dependencies to reduce image size
+    apk del .build-deps && \
+    # Install runtime dependencies
+    apk add --no-cache \
+    libusb-1.0 \
+    librtlsdr \
+    ffmpeg-libs \
+    libao
 
 # Install Python dependencies
-RUN pip install flask
+RUN pip install --no-cache-dir flask
 
-# If no requirements.txt exists in the repo, uncomment the line below instead:
-# RUN pip install --no-cache-dir flask
-
-# Copy the application code
+# Copy application code
 COPY . .
 
 # Expose the web player port
 EXPOSE 7430
 
-# Run the specific script requested
-CMD ["python3", "webradio.py"]   
+# Ensure USB devices are accessible (optional udev trigger)
+CMD ["sh", "-c", "udev-trigger || true && python3 webradio.py"]   
