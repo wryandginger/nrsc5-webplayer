@@ -11,5 +11,5 @@ services:
       - /dev/bus/usb:/dev/bus/usb
     environment:
       - TZ=UTC
-    network_mode: "bridge"
+    network_mode: "host"
     restart: unless-stopped
