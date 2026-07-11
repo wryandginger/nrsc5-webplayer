@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  nrsc5-webplayer:
+    build: .
+    container_name: nrsc5-webplayer
+    ports:
+      - "7430:7430"
+    devices:
+      - /dev/bus/usb:/dev/bus/usb
+    environment:
+      - TZ=America/New_York
+    restart: unless-stopped
+    # Optional: Uncomment if you need to pass specific RTL-SDR device flags
+    # command: ["python3", "webradio.py", "--device", "0"]   
