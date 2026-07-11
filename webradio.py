@@ -507,9 +507,9 @@ def index():
 
                 <div class="manual">
                     <label style="color:#ccc">Freq:</label>
-                    <input id="manual-freq" type="text" placeholder="e.g. 96.5" />
+                    <input id="manual-freq" type="text" maxlength=5 size=5 placeholder="107.7" />
                     <label style="color:#ccc">Ch:</label>
-                    <input id="manual-program" type="text" placeholder="e.g. 0" />
+                    <input id="manual-program" type="text" maxlength=1 size=1 placeholder="0" />
                     <button onclick="tuneManualStart()">Manually Tune</button>
                 </div>
 
@@ -636,7 +636,7 @@ def index():
                         document.getElementById('track-title').innerText = data.title || "";
                         document.getElementById('track-artist').innerText = data.artist || "";
                         document.getElementById('track-album').innerText = data.album || "";
-                        document.getElementById('track-genre').innerText = data.genre ? "Genre: " + data.genre : "";
+                        document.getElementById('track-genre').innerText = data.genre ? "" + data.genre : "";
                         document.getElementById('track-slogan').innerText = data.slogan ? "" + data.slogan : "";
                         document.getElementById('track-bitrate').innerText = data.bitrate ? "Bitrate: " + data.bitrate : "";
 
@@ -651,6 +651,7 @@ def index():
                         logContainer.innerHTML = (data.raw_log || []).join('<br>');
                         logContainer.scrollTop = logContainer.scrollHeight;
 
+
                         // Render TMT files as a 3x3 image gallery
                         const tmtContainer = document.getElementById('tmt-container');
                         tmtContainer.innerHTML = '';
@@ -661,19 +662,36 @@ def index():
                                 const partsA = a.split('_');
                                 const partsB = b.split('_');
 
-                                // Extract Grid Row (index 3) and Grid Column (index 4)
-                                // Sample: 640(0) _ TMT(1) _ 02dgt3(2) _ 1(3) _ 3(4) _ date...
-                                const rowA = parseInt(partsA[3], 10);
-                                const colA = parseInt(partsA[4], 10);
-                                const rowB = parseInt(partsB[3], 10);
-                                const colB = parseInt(partsB[4], 10);
+                                let rowA, colA, rowB, colB;
 
+                                // Detect format based on parts length or specific content
+                                // New format: 1783727236_trafficMap_1_0_4t25.png (5+ parts usually, Row@2, Col@3)
+                                // Old format: 640(0)_TMT(1)_02dgt3(2)_1(3)_3(4)_date... (Row@3, Col@4)
+        
+                                // Heuristic: If parts[1] contains "trafficMap", it's the new format
+                                if (partsA[1] && partsA[1].includes('trafficMap')) {
+                                    rowA = parseInt(partsA[2], 10);
+                                    colA = parseInt(partsA[3], 10);
+                                } else {
+                                    // Fallback to original logic
+                                    rowA = parseInt(partsA[3], 10);
+                                    colA = parseInt(partsA[4], 10);
+                                }
+
+                                if (partsB[1] && partsB[1].includes('trafficMap')) {
+                                    rowB = parseInt(partsB[2], 10);
+                                    colB = parseInt(partsB[3], 10);
+                                } else {
+                                    // Fallback to original logic
+                                    rowB = parseInt(partsB[3], 10);
+                                    colB = parseInt(partsB[4], 10);
+                                }
 
                                 // Compare Rows first
                                 if (rowA !== rowB) {
                                     return rowA - rowB;
                                 }
-        
+
                                 // If Rows are equal, compare Columns
                                 return colA - colB;
                             });
@@ -687,7 +705,8 @@ def index():
                                 item.appendChild(img);
                                 tmtContainer.appendChild(item);
                             });
-                        }
+                        }   
+
 
                         // Update Start/Stop UI
                         document.getElementById('start-btn').disabled = data.running;
