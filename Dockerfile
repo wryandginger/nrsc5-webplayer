@@ -60,4 +60,4 @@ COPY . .
 EXPOSE 7430
 
 # Trigger udev and run
-CMD ["sh", "-c", "udev-trigger || true && python3 webradio.py"]Copied!   
+CMD ["sh", "-c", "udev-trigger || true && python3 webradio.py"]
