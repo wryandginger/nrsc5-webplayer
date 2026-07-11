@@ -34,7 +34,8 @@ latest_metadata = {
     "album": "Unknown Album",
     "genre": "Unknown Genre",
     "slogan": "",
-    "bitrate": "Unknown Bitrate",
+    "mer": "",
+    "bitrate": "",
     "art_url": "",
     "raw_log": [],
     "tmt_files": [],
@@ -49,6 +50,7 @@ def parse_nrsc5_output(pipe):
     album_regex = re.compile(r"Album:\s*(.*)")
     genre_regex = re.compile(r"Genre:\s*(.*)")
     slogan_regex = re.compile(r"Slogan:\s*(.*)")
+    mer_regex = re.compile(r"MER:\s*(.*)")
     bitrate_regex = re.compile(r"Audio bit rate:\s*(.*)")
 
     lot_regex = re.compile(r"LOT file:\s+port=(\w+)\s+lot=(\d+)\s+name=([a-zA-Z0-9_\-\.]+)\s+size=(\d+)\s+mime=([0-9A-F]+)")
@@ -82,6 +84,10 @@ def parse_nrsc5_output(pipe):
         g_match = slogan_regex.search(line)
         if g_match:
             latest_metadata["slogan"] = g_match.group(1).strip()
+            
+        g_match = mer_regex.search(line)
+        if g_match:
+            latest_metadata["mer"] = g_match.group(1).strip()
 
         br_match = bitrate_regex.search(line)
         if br_match:
@@ -204,6 +210,7 @@ def start_nrsc5(preset_id=None, freq=None, program=None, name=None):
             "album": "",
             "genre": "",
             "slogan": "",
+            "mer": "",
             "bitrate": "",
             "art_url": "",
             "running": False
@@ -241,6 +248,7 @@ def start_nrsc5(preset_id=None, freq=None, program=None, name=None):
         "album": "",
         "genre": "",
         "slogan": "",
+        "mer": "",
         "bitrate": "",
         "art_url": "",
         "raw_log": [],
@@ -329,6 +337,7 @@ def start_nrsc5(preset_id=None, freq=None, program=None, name=None):
             "album": "",
             "genre": "",
             "slogan": "",
+            "mer": "",
             "bitrate": "",
             "art_url": "",
             "running": False
@@ -398,6 +407,7 @@ def stop_nrsc5():
         "album": "",
         "genre": "",
         "slogan": "",
+        "mer": "",
         "bitrate": "",
         "art_url": "",
         "running": False
@@ -563,9 +573,8 @@ def index():
                         <h2 id="track-title">Stopped</h2>
                         <h3 id="track-artist"></h3>
                         <h3 id="track-album"></h3>
-                        <p id="track-genre"></p>
-                        <p id="track-slogan"></p>
-                        <p id="track-bitrate"></p>
+                        <p id="track-genre"></p> <p id="track-slogan"></p>
+                        <p id="track-bitrate"></p><p id="track-mer"></p>
                     </div>
                     <!-- Audio element initially stopped; no autoplay -->
                     <audio id="radio-player" controls src=""></audio>
@@ -659,6 +668,7 @@ def index():
                             document.getElementById('track-album').innerText = "";
                             document.getElementById('track-genre').innerText = "";
                             document.getElementById('track-slogan').innerText = "";
+                            document.getElementById('track-mer').innerText = "";
                             document.getElementById('track-bitrate').innerText = "";
                             const artContainer = document.getElementById('art-container');
                             artContainer.innerHTML = 'No Art';
@@ -677,6 +687,7 @@ def index():
                         document.getElementById('track-album').innerText = data.album || "";
                         document.getElementById('track-genre').innerText = data.genre ? "" + data.genre : "";
                         document.getElementById('track-slogan').innerText = data.slogan ? "" + data.slogan : "";
+                        document.getElementById('track-mer').innerText = data.mer ? "" + data.mer : "";
                         document.getElementById('track-bitrate').innerText = data.bitrate ? "Bitrate: " + data.bitrate : "";
 
                         const artContainer = document.getElementById('art-container');
