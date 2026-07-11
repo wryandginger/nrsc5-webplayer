@@ -515,10 +515,11 @@ def index():
     <html lang="en">
     <head>
         <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">   
         <title>Web HD Radio</title>
         <style>
             body { font-family: Arial, sans-serif; background: #222; color: #fff; text-align: center; padding: 20px; }
-            .container { max-width: 900px; margin: 0 auto; display: grid; grid-template-columns: 1fr 300px; gap: 20px; }
+            .container { max-width: 900px; margin: 0 auto; display: grid; grid-template-columns: 1fr; gap: 20px; }
             .main-panel { background: #333; padding: 20px; border-radius: 10px; }
             .tmt-panel { background: #333; padding: 20px; border-radius: 10px; height: fit-content; }
             .presets { margin-bottom: 10px; }
