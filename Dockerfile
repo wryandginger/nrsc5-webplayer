@@ -17,6 +17,9 @@ RUN apt-get update && apt-get install -y \
     pkg-config \
     ffmpeg \
     usbutils \
+    udev \
+    hwdata \
+    libudev1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Clone and compile libnrsc5 (The core C library)
