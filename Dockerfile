@@ -17,6 +17,8 @@ RUN apt-get update && apt-get install -y \
     pkg-config \
     ffmpeg \
     usbutils \
+    udev \
+    hwdata \
     && rm -rf /var/lib/apt/lists/*
 
 # Clone and compile libnrsc5 (The core C library)
@@ -42,4 +44,4 @@ COPY . .
 EXPOSE 7430
 
 # Run the specific script requested
-CMD ["python3", "webradio.py"]   
+CMD ["sh", "-c", "udevd --daemon && sleep 2 && udevadm trigger && python3 webradio.py"]
