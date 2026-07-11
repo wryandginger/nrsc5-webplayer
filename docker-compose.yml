@@ -11,5 +11,3 @@ services:
     environment:
       - TZ=America/New_York
     restart: unless-stopped
-    # Optional: Uncomment if you need to pass specific RTL-SDR device flags
-    # command: ["python3", "webradio.py", "--device", "0"]   
