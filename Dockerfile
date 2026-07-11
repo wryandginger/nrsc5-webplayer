@@ -21,8 +21,6 @@ RUN apt-get update && apt-get install -y \
     udev \
     hwdata \
     libudev1 \
-    && rm -rf /var/lib/apt/lists/* \
-    && ln -s /lib/udev/udevd /usr/sbin/udevd 2>/dev/null || true
 
 # Clone and compile libnrsc5
 RUN git clone https://github.com/theori-io/nrsc5.git /tmp/nrsc5 \
@@ -43,5 +41,5 @@ COPY . .
 # Expose the web player port
 EXPOSE 7430
 
-# Start udevd using the full path to be safe, then run the app
-CMD ["sh", "-c", "/lib/udev/udevd --daemon || /usr/sbin/udevd --daemon; sleep 2; udevadm trigger; python3 webradio.py"]   
+# run it plain
+CMD ["python3", "webradio.py"]
