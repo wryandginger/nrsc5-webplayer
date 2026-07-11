@@ -3,8 +3,7 @@ FROM python:3.9-slim
 # Set working directory
 WORKDIR /app
 
-# Install dependencies including udev and hwdata
-# We explicitly install 'libudev1' as well to ensure runtime libraries are present
+# Install system dependencies AND udev/hwdata (Critical for lsusb/usbreset)
 RUN apt-get update && apt-get install -y \
     git \
     build-essential \
@@ -18,9 +17,9 @@ RUN apt-get update && apt-get install -y \
     pkg-config \
     ffmpeg \
     usbutils \
-    udev \
-    hwdata \
-    libudev1 \
+    udev \        # <--- ADDED: Installs the udev daemon
+    hwdata \      # <--- ADDED: Installs USB ID database (fixes "unable to initialize usb spec")
+    && rm -rf /var/lib/apt/lists/*
 
 # Clone and compile libnrsc5
 RUN git clone https://github.com/theori-io/nrsc5.git /tmp/nrsc5 \
@@ -41,5 +40,6 @@ COPY . .
 # Expose the web player port
 EXPOSE 7430
 
-# run it plain
-CMD ["python3", "webradio.py"]
+# Create a startup script to launch udevd BEFORE the python app
+# We use a shell wrapper here instead of a separate file for simplicity
+CMD ["sh", "-c", "udevd --daemon && sleep 2 && udevadm trigger && python3 webradio.py"]Copied!   
