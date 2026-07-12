@@ -7,15 +7,11 @@ services:
     privileged: true
     ports:
       - "7430:7430"
-    devices:
-      - /dev:/dev
-      - /run/udev:/run/udev:ro
+    volumes:
+      - /dev/bus/usb:/dev/bus/usb
     environment:
       - TZ=UTC
-      - UDEV=1
-    device_cgroup_rules:
-      - 'c *:* rwm'
     network_mode: "bridge"
-    restart: unless-stopped
+    restart: always
     stdin_open: true  
-    tty: true         
+    tty: true   
