@@ -9,6 +9,7 @@ services:
       - "7430:7430"
     devices:
       - /dev:/dev
+      - /run/udev:/run/udev:ro
     environment:
       - TZ=UTC
       - UDEV=1
