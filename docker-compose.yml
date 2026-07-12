@@ -19,3 +19,15 @@ services:
     restart: unless-stopped
     stdin_open: true   # Keeps STDIN open even if not attached
     tty: true          # Allocates a pseudo-TTY
+    healthcheck:
+      test: >
+        bash -c '
+        OUTPUT=$(nrsc5 99.9 0 -o 1.wav 2>&1 || true);
+        if echo "$OUTPUT" | grep -q "usb_open error -4"; then
+        kill -s SIGTERM 1;
+        exit 1;
+        fi
+        '
+      interval: 30s
+      timeout: 5s
+      retries: 1
