@@ -14,11 +14,10 @@ a python webplayer for HDRadio FM Broadcasts
 # How to:
 - Run python3 webradio.py and go to YOUR_IP:7420
 - Alternatively, you can run this as a docker container (recommended for enhanced security).
-- I use portainer and just put this as a Repository stack with no other tweaks.
+- I use portainer and just put this as a repository stack with no other tweaks.
 - Presets are for the Seattle market. Adjust the script to your area/tastes.
 
 # Known bugs:
 - Audio will occasionally cut out due to poor reception. Consider buying a better antenna for your SDR.
-- This only works for one user. However, additional users can tune to http://IP:7430/stream.mp3 and listen to the stream OR http://IP:7430/aas/stream.wav gives it to you in a WAV file, which is not IOS friendly.
+- This only works for one user. However, additional users can tune to http://IP:7430/stream.mp3 and listen to the stream OR http://IP:7430/aas/stream.wav for the raw output
 - No metadata/albumart is attached to the MP3 stream.
-- Unplugging/replugging SDR when using Docker makes the SDR inaccessible. I have tried so many fixes and I'm stumped. Just restart the container manually to get your SDR back or run webradio.py on host like a barbarian
