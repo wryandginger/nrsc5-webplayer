@@ -20,6 +20,7 @@ RUN apt-get update && apt-get install -y \
     udev \
     hwdata \
     libudev1 \
+    nano \
     && rm -rf /var/lib/apt/lists/*
 
 # Clone and compile libnrsc5 (The core C library)
