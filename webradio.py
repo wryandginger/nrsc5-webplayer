@@ -541,7 +541,7 @@ def index():
             .manual { margin-top: 12px; display:flex; justify-content:center; gap:8px; align-items:center; flex-wrap: wrap; }
             input[type="text"] { padding:6px 8px; border-radius:4px; border:1px solid #666; background:#222; color:#fff; }
             .tmt-panel h3 { margin-top: 0; color: #fff; }
-            .tmt-gallery { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0px; padding: 0px; background: #000; border-radius: 0px; max-height: 512px; overflow-y: auto; }
+            .tmt-gallery { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0px; padding: 0px; background: #000; border-radius: 0px; }
             .tmt-item { width: 100%; aspect-ratio: 1 / 1; background: #222; border-radius: 0px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
             .tmt-item img { width: 100%; height: 100%; object-fit: cover; }
         </style>
