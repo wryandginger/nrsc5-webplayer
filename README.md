@@ -21,3 +21,4 @@ a python webplayer for HDRadio FM Broadcasts
 - Audio will occasionally cut out due to poor reception. Consider buying a better antenna for your SDR.
 - This only works for one user. However, additional users can tune to http://IP:7430/stream.mp3 and listen to the stream OR http://IP:7430/aas/stream.wav gives it to you in a WAV file, which is not IOS friendly.
 - No metadata/albumart is attached to the MP3 stream.
+- Unplugging/replugging SDR when using Docker makes the SDR inaccessible. I have tried so many fixes and I'm stumped. Just restart the container manually to get your SDR back or run webradio.py on host like a barbarian
