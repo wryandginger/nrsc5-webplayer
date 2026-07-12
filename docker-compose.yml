@@ -8,9 +8,12 @@ services:
     ports:
       - "7430:7430"
     devices:
-      - /dev/bus/usb:/dev/bus/usb
+      - /dev:/dev
     environment:
       - TZ=UTC
+      - UDEV=1
+    device_cgroup_rules:
+      - 'c *:* rwm'
     network_mode: "bridge"
     restart: unless-stopped
     stdin_open: true   # Keeps STDIN open even if not attached
