@@ -20,4 +20,4 @@ a python webplayer for HDRadio FM Broadcasts
 # Known bugs:
 - Audio will occasionally cut out due to poor reception. Consider buying a better antenna for your SDR.
 - This only works for one user. However, additional users can tune to http://IP:7430/stream.mp3 and listen to the stream OR http://IP:7430/aas/stream.wav for the raw output
-- No metadata/albumart is attached to the MP3 stream.
+- No metadata/albumart is attached to the MP3 stream, but you get it on the lockscreen. 
