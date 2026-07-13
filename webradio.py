@@ -10,17 +10,27 @@ from flask import Flask, render_template_string, jsonify, send_from_directory, R
 
 # --- CONFIGURATION ---
 PRESETS = {
-    "1": ("103.7", "0", "HOT 103"),
-    "2": ("96.5", "0", "JackFM"),
-    "3": ("102.5", "1", "TikTok Radio"),
-    "4": ("107.7", "1", "Channel Q"),
-    "5": ("106.1", "1", "Pride Radio"),
-    "6": ("93.3", "1", "KUBE"),
-    "7": ("97.3", "0", "KIRO News"),
-    "8": ("92.5", "0", "Movin' 92.5"),
-    "9": ("94.9", "0", "KUOW/NPR"),
-    "10": ("98.1", "1", "Classical/Calm"),
-    
+    "1": ("88.5", "0", "KNKX/NPR"),  
+    "2": ("88.5", "1", "Jazz24"),
+    "3": ("92.5", "0", "Movin' 92.5"),
+    "4": ("93.3", "1", "KUBE"),
+    "5": ("94.1", "0", "Emma"),
+    "6": ("94.9", "0", "KUOW/NPR"),
+    "7": ("95.7", "0", "The Jet"),
+    "8": ("96.5", "0", "JackFM"),
+    "9": ("96.5", "1", "Alt 96.5"),
+    "10": ("97.3", "0", "KIRO News"),
+    "11": ("98.1", "0", "Classical"),
+    "12": ("98.1", "1", "Classical/Calm"),
+    "13": ("98.9", "1", "Alt Talk"),
+    "14": ("99.9", "0", "KISW/Rock"),
+    "15": ("101.5", "1", "1000AM/NW News"),
+    "16": ("102.5", "1", "TikTok Radio"),
+    "17": ("103.7", "0", "HOT 103"),
+    "18": ("106.1", "0", "Hits 106"),
+    "19": ("106.1", "1", "Pride Radio"),
+    "20": ("107.7", "0", "KNDD The End"),
+    "21": ("107.7", "1", "Channel Q"),
 }
 
 TMP_DIR = "/tmp/nrsc5_aas"
@@ -551,12 +561,16 @@ def index():
             <div class="main-panel">
                 <h1>HD Radio Web Radio</h1>
                 <div class="presets">
-                    {% for id, details in presets.items() %}
-                        <button id="btn-{{ id }}" onclick="tunePreset('{{ id }}')" class="{% if id == current_preset %}active{% endif %}">
+                      <label for="preset-select" style="color:#ccc; margin-right:8px;">Preset:</label>
+                      <select id="preset-select" onchange="tunePreset(this.value)">
+                        {% for id, details in presets.items() %}
+                          <option value="{{ id }}" {% if id == current_preset %}selected{% endif %}>
                             {{ details[2] }} ({{ details[0] }} MHz)
-                        </button>
-                    {% endfor %}
-                </div>
+                          </option>
+                        {% endfor %}
+                      </select>
+                      <button id="start-btn" onclick="startCurrent()">Start</button>
+                    </div>   
 
                 <div class="manual">
                     <label style="color:#ccc">Freq:</label>
@@ -564,10 +578,6 @@ def index():
                     <label style="color:#ccc">Ch:</label>
                     <input id="manual-program" type="text" maxlength=1 size=1 placeholder="0" />
                     <button onclick="tuneManualStart()">Manually Tune</button>
-                </div>
-
-                <div class="controls">
-                    <button id="start-btn" onclick="startCurrent()">Start</button>
                     <button id="stop-btn" onclick="stopStream()">Stop</button>
                 </div>
 
