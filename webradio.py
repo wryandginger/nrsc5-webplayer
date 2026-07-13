@@ -598,6 +598,15 @@ def index():
         <script>
             let selectedPreset = "{{ current_preset if current_preset is not none else '' }}";
 
+            // Setup native lock screen hardware controls
+            if ('mediaSession' in navigator) {
+                const player = document.getElementById('radio-player');
+                navigator.mediaSession.setActionHandler('play', () => { player.play().catch(()=>{}); });
+                navigator.mediaSession.setActionHandler('pause', () => { player.pause(); });
+            }
+
+
+
             function tunePreset(id) {
                 // Just select the preset locally; does NOT start the stream
                 selectedPreset = id;
@@ -676,6 +685,12 @@ def index():
                             document.getElementById('track-bitrate').innerText = "";
                             const artContainer = document.getElementById('art-container');
                             artContainer.innerHTML = 'No Art';
+
+                            // Clear lock screen metadata on stop
+                            if ('mediaSession' in navigator) {
+                                navigator.mediaSession.metadata = null;
+                            }
+
                         } else {
                             alert("Failed to stop: " + (data.message || "unknown"));
                         }
@@ -699,6 +714,16 @@ def index():
                             artContainer.innerHTML = '<img src="' + data.art_url + '" />';
                         } else {
                             artContainer.innerHTML = 'No Art';
+                        }
+
+                         // Push dynamic text data directly to iOS Lock Screen
+                        if ('mediaSession' in navigator && data.title) {
+                            navigator.mediaSession.metadata = new MediaMetadata({
+                                title: data.title,
+                                artist: data.artist || 'HD Radio',
+                                album: data.album || '',
+                                artwork: data.art_url ? [{ src: data.art_url, sizes: '256x256', type: 'image/jpeg' }] : []
+                            });
                         }
 
                         const logContainer = document.getElementById('log-container');
