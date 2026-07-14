@@ -15,3 +15,11 @@ services:
     restart: always
     stdin_open: true  
     tty: true   
+    deploy:
+      resources:
+        limits:
+          cpus: '1'           # Maximum 1 core - nrsc5 eats resources
+          memory: 1096M       # Maximum 1GB of RAM
+        reservations:
+          cpus: '0.25'        # Request 25% of a single CPU core
+          memory: 256M        # Request 256 Megabytes of RAM
