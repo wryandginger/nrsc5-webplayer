@@ -269,36 +269,122 @@ def start_nrsc5(preset_id=None, freq=None, program=None, name=None):
         "running": True
     })
 
-    # Clear TMP_DIR (remove old AAS images, old stream file)
-    for f in os.listdir(TMP_DIR):
+# --- GLOBAL STATE MANAGEMENT ---
+nrsc5_process = None
+ffmpeg_process = None
+stream_start_time = None
+listener_count = 0
+listener_lock = threading.Lock()
+
+# Audio broadcast system
+audio_subscribers = []
+subscribers_lock = threading.Lock()
+
+def cleanup_tmp_dir():
+    """Periodically keep only the 20 newest files to prevent disk bloating."""
+    try:
+        files = [os.path.join(TMP_DIR, f) for f in os.listdir(TMP_DIR) if os.path.isfile(os.path.join(TMP_DIR, f))]
+        files.sort(key=os.path.getmtime)
+        if len(files) > 20:
+            for old_file in files[:-20]:
+                try:
+                    os.remove(old_file)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+def stop_nrsc5():
+    """Safely kills both nrsc5 and ffmpeg processes."""
+    global nrsc5_process, ffmpeg_process, latest_metadata, stream_start_time
+    
+    # Close all user broadcast queues
+    with subscribers_lock:
+        for q in audio_subscribers:
+            q.put(None)  # Signal EOF to generator threads
+        audio_subscribers.clear()
+
+    if ffmpeg_process:
         try:
-            os.remove(os.path.join(TMP_DIR, f))
+            ffmpeg_process.terminate()
+            ffmpeg_process.wait(timeout=1)
         except Exception:
             pass
+        ffmpeg_process = None
 
-    out_path = os.path.join(TMP_DIR, "stream.wav")
+    if nrsc5_process:
+        try:
+            nrsc5_process.terminate()
+            nrsc5_process.wait(timeout=1)
+        except Exception:
+            pass
+        nrsc5_process = None
+        
+    latest_metadata["running"] = False
+    stream_start_time = None
 
-    # Tries different devices for multiple SDRs.
+def broadcast_audio_thread():
+    """Reads raw data from FFmpeg once and distributes it to all connected users."""
+    global ffmpeg_process
+    while ffmpeg_process and ffmpeg_process.poll() is None:
+        try:
+            chunk = ffmpeg_process.stdout.read(4096)
+            if not chunk:
+                break
+            with subscribers_lock:
+                for q in audio_subscribers:
+                    q.put(chunk)
+        except Exception:
+            break
+    stop_nrsc5()
+
+def is_stop_allowed():
+    """Checks if the stream is allowed to be stopped/changed based on age and user counts."""
+    global stream_start_time, listener_count
+    with listener_lock:
+        # If no one is listening or it's dead, anyone can do anything
+        if stream_start_time is None or listener_count <= 1:
+            return True
+        # If multiple people are listening, block unless stream is older than 1 hour
+        stream_age = datetime.now() - stream_start_time
+        if stream_age > timedelta(hours=1):
+            return True
+        return False
+
+def start_nrsc5(preset_id=None, freq=None, program=None, name=None):
+    """Spawns nrsc5 directly piped into ffmpeg for direct streaming."""
+    global nrsc5_process, ffmpeg_process, latest_metadata, current_preset, stream_start_time
+    
+    # 1. Enforce protection rules if already running
+    if ffmpeg_process and ffmpeg_process.poll() is None:
+        if not is_stop_allowed():
+            raise Exception("Stream is protected! It has multiple listeners and is under 1 hour old.")
+    
+    stop_nrsc5()
+    cleanup_tmp_dir()
+
+    if preset_id is not None:
+        current_preset = preset_id
+        freq, program, name = PRESETS[preset_id]
+
     candidate_cmds = [
-        ["nrsc5", "-d 0", freq, program, "-o", out_path, "--dump-aas-files", TMP_DIR],    # Device 0
-        ["nrsc5", "-d 0", freq, program, "-o", out_path, "--dump-aas-files", TMP_DIR],    # Device 1
-        ["nrsc5", freq, program, "-o", out_path, "--dump-aas-files", TMP_DIR],            # minimal
+        ["nrsc5", "-d 0", str(freq), str(program), "-o", "-", "--dump-aas-files", TMP_DIR],
+        ["nrsc5", "-d 1", str(freq), str(program), "-o", "-", "--dump-aas-files", TMP_DIR],
+        ["nrsc5", str(freq), str(program), "-o", "-", "--dump-aas-files", TMP_DIR],
     ]
 
-    started = False
-    last_err_text = ""
     for cmd in candidate_cmds:
-        _append_log_text(f"Trying: {' '.join(cmd)}")
+        _append_log_text(f"trying: {' '.join(cmd)}")
         try:
             p = subprocess.Popen(
                 cmd,
-                stdout=subprocess.DEVNULL,   
+                stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=False,
                 bufsize=4096
             )
         except Exception as e:
-            _append_log_text(f"Failed to spawn nrsc5: {e}")
+            _append_log_text(f"failed to spawn nrsc5: {e}")
             continue
 
         timeout = 0.6
@@ -313,208 +399,37 @@ def start_nrsc5(preset_id=None, freq=None, program=None, name=None):
 
         if p.poll() is None:
             nrsc5_process = p
+            latest_metadata["running"] = True
+            stream_start_time = datetime.now()
+            
+            try:
+                ffmpeg_cmd = [
+                    "ffmpeg", "-f", "s16le", "-ar", "44100", "-ac", "2", "-i", "pipe:0",
+                    "-c:a", "libmp3lame", "-b:a", "128k", "-f", "mp3", "pipe:1"
+                ]
+                ffmpeg_process = subprocess.Popen(
+                    ffmpeg_cmd,
+                    stdin=nrsc5_process.stdout,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                    bufsize=4096
+                )
+                
+                # Start background thread to broadcast the single output buffer to all users
+                threading.Thread(target=broadcast_audio_thread, daemon=True).start()
+                
+            except Exception as e:
+                _append_log_text(f"failed to spawn ffmpeg: {e}")
+
             try:
                 stderr_text_wrapper = os.fdopen(nrsc5_process.stderr.fileno(), 'r', errors='ignore')
                 threading.Thread(target=parse_nrsc5_output, args=(stderr_text_wrapper,), daemon=True).start()
             except Exception:
-                _append_log_text("Warning: failed to spawn stderr parser thread")
-            started = True
-            _append_log_text("nrsc5 started successfully.")
-            break
-        else:
-            try:
-                err = p.stderr.read() or b""
-            except Exception:
-                err = b""
-            try:
-                err_text = err.decode(errors='ignore') if isinstance(err, (bytes, bytearray)) else str(err)
-            except Exception:
-                err_text = str(err)
-            last_err_text = err_text
-            _append_log_text(f"nrsc5 exited: {err_text.strip()}")
-            # ensure cleanup
-            try:
-                p.stderr.close()
-            except Exception:
-                pass
-            try:
-                p.kill()
-            except Exception:
-                pass
-            # try next candidate
-
-    if not started:
-        latest_metadata.update({
-            "title": "Failed to start nrsc5",
-            "artist": "",
-            "album": "",
-            "genre": "",
-            "slogan": "",
-            "mer": "",
-            "bitrate": "",
-            "art_url": "",
-            "running": False
-        })
-        if last_err_text:
-            _append_log_text("Last stderr from nrsc5:")
-            _append_log_text(last_err_text)
-        raise RuntimeError("nrsc5 failed to start; check raw_log for details")
-
-def stop_nrsc5():
-    global nrsc5_process, latest_metadata
-    if not nrsc5_process:
-        latest_metadata["running"] = False
-        return
-
-    try:
-        nrsc5_process.terminate()
-        nrsc5_process.communicate(timeout=5)
-    except subprocess.TimeoutExpired:
-        try:
-            nrsc5_process.kill()
-            nrsc5_process.communicate(timeout=2)
-        except Exception:
-            pass
-    except Exception:
-        pass
-    finally:
-        try:
-            # Clean environment to remove Flask-specific FD variables
-            env = os.environ.copy()
-            env.pop('WERKZEUG_SERVER_FD', None)
+                _append_log_text("warning: failed to spawn stderr parser thread")
             
-            subprocess.run(
-                ["usbreset", "RTL2838UHIDIR"], 
-                check=True,
-                env=env,
-                close_fds=True,  # CRITICAL: Closes inherited Flask file descriptors
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
-            )
-        except subprocess.CalledProcessError:
-            # Only log if the command actually fails (non-zero exit)
-            print("Error: usbreset failed to execute.")
-        except OSError as e:
-            # Ignore Errno 9 if the command likely succeeded (race condition in cleanup)
-            if e.errno != 9:
-                print(f"OS Error during reset: {e}")
-        except Exception as e:
-            print(f"Unexpected error: {e}")
-
-        latest_metadata["running"] = False
-
-    if nrsc5_process.stdin:
-        try: nrsc5_process.stdin.close()
-        except: pass
-    if nrsc5_process.stdout:
-        try: nrsc5_process.stdout.close()
-        except: pass
-    if nrsc5_process.stderr:
-        try: nrsc5_process.stderr.close()
-        except: pass
-
-    nrsc5_process = None
-    latest_metadata.update({
-        "title": "Stopped",
-        "artist": "",
-        "album": "",
-        "genre": "",
-        "slogan": "",
-        "mer": "",
-        "bitrate": "",
-        "art_url": "",
-        "running": False
-    })
-    _append_log_text("nrsc5 stopped by user.")
-
-# --- AUDIO STREAMING GENERATOR ---
-def stream_audio_mp3():
-    out_path = os.path.join(TMP_DIR, "stream.wav")
-
-    start_wait = 0.0
-    while True:
-        if os.path.exists(out_path):
-            break
-        if not latest_metadata.get("running"):
-            return
-        time.sleep(0.1)
-        start_wait += 0.1
-        if start_wait > 15:
-            _append_log_text("Timeout waiting for stream.wav to appear.")
-            return    
-    try:
-        ffmpeg_cmd = [
-            'ffmpeg',
-            '-f', 's16le',          # Input format: 16-bit signed little-endian PCM
-            '-ar', '44100',         # Sample Rate (CHANGE THIS to match your WAV: 24000, 44100, etc.)
-            '-ac', '2',             # Channels (CHANGE THIS: 1 for mono, 2 for stereo)
-            '-i', 'pipe:0',         # Input from stdin
-            '-f', 'mp3',            # Output format
-            '-b:a', '128k',         # Bitrate
-            'pipe:1'                # Output to stdout
-        ]
-        
-        process = subprocess.Popen(
-            ffmpeg_cmd, 
-            stdin=subprocess.PIPE, 
-            stdout=subprocess.PIPE, 
-            stderr=subprocess.PIPE
-        )
-
-        last_inode = None
-        f = None
-        
-        def file_reader():
-            nonlocal f, last_inode
-            try:
-                while latest_metadata.get("running") or (nrsc5_process is not None):
-                    try:
-                        st = os.stat(out_path)
-                        
-                        if f is None or st.st_ino != last_inode:
-                            if f:
-                                try: f.close()
-                                except: pass
-                            f = open(out_path, "rb")
-                            last_inode = st.st_ino
-
-                        chunk = f.read(4096)
-                        if chunk:
-                            process.stdin.write(chunk)
-                        else:
-                            time.sleep(0.05)
-                    except FileNotFoundError:
-                        if f:
-                            try: f.close()
-                            except: pass
-                        f = None
-                        time.sleep(0.1)
-            except Exception as e:
-                _append_log_text(f"Reader error: {e}")
-            finally:
-                if f:
-                    try: f.close()
-                    except: pass
-                if process.stdin:
-                    process.stdin.close()
-
-        reader_thread = threading.Thread(target=file_reader, daemon=True)
-        reader_thread.start()
-
-        while True:
-            output = process.stdout.read(4096)
-            if not output:
-                # Check if process died
-                if process.poll() is not None:
-                    break
-                time.sleep(0.05)
-                continue
-            yield output
-
-    finally:
-        if process:
-            process.terminate()
-            process.wait()
+            return True
+            
+    raise Exception("Failed to launch nrsc5 on all devices.")
 
 
 # --- FLASK ROUTES ---
@@ -818,12 +733,11 @@ def tune(preset_id):
             start_nrsc5(preset_id=preset_id)
             return jsonify({"status": "success", "preset": preset_id})
         except Exception as e:
-            return jsonify({"status": "error", "message": str(e)}), 500
+            return jsonify({"status": "error", "message": str(e)}), 403 if "protected" in str(e) else 500
     return jsonify({"status": "error", "message": "Invalid preset"}), 400
 
 @app.route("/tune_manual")
 def tune_manual():
-    # Manual tuning using query parameters: ?freq=96.5&program=0
     freq = request.args.get("freq", "").strip()
     program = request.args.get("program", "").strip()
 
@@ -834,28 +748,66 @@ def tune_manual():
         start_nrsc5(preset_id=None, freq=freq, program=program, name=None)
         return jsonify({"status": "success", "freq": freq, "program": program})
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 403 if "protected" in str(e) else 500
 
 @app.route("/stop")
 def stop():
+    if not is_stop_allowed():
+        return jsonify({"status": "error", "message": "Stream is protected! Active listeners present under 1 hour."}), 403
     stop_nrsc5()
     return jsonify({"status": "success"})
 
+@app.route("/stream.mp3")
+def stream_audio():
+    """Generates a non-blocking standalone audio stream using a custom thread queue."""
+    import queue
+    global ffmpeg_process
+    
+    if not ffmpeg_process or ffmpeg_process.poll() is not None:
+        return "Stream not active. Choose a preset first.", 503
+
+    user_queue = queue.Queue(maxsize=50)
+    
+    with subscribers_lock:
+        audio_subscribers.append(user_queue)
+        
+    with listener_lock:
+        global listener_count
+        listener_count += 1
+
+    def generate():
+        try:
+            while True:
+                # Blocks here until a chunk arrives or stream ends
+                chunk = user_queue.get()
+                if chunk is None:
+                    break
+                yield chunk
+        finally:
+            # Clean up user when connection disconnects/closes
+            with subscribers_lock:
+                if user_queue in audio_subscribers:
+                    audio_subscribers.remove(user_queue)
+            with listener_lock:
+                global listener_count
+                listener_count = max(0, listener_count - 1)
+
+    return Response(generate(), mimetype="audio/mpeg")
+
 @app.route("/status")
 def status():
+    cleanup_tmp_dir()
     return jsonify(latest_metadata)
 
-@app.route('/stream.mp3')
-def audio_stream():
-    return Response(
-        stream_audio_mp3(),
-        mimetype='audio/mpeg',
-        headers={
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache',
-            'Expires': '0'
-        }
-    )
+@app.route("/stream_status")
+def stream_status():
+    """Tells the frontend if a stream is active so it doesn't try to re-tune."""
+    global ffmpeg_process, latest_metadata
+    is_active = ffmpeg_process is not None and ffmpeg_process.poll() is None
+    return jsonify({
+        "active": is_active,
+        "preset": current_preset if is_active else None
+    })
 
 @app.route("/aas/<filename>")
 def get_aas_file(filename):
