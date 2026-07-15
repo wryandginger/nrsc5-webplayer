@@ -5,6 +5,7 @@ import time
 import shutil
 import subprocess
 import threading
+from waitress import serve
 from datetime import datetime
 from flask import Flask, render_template_string, jsonify, send_from_directory, Response, request
 
@@ -869,4 +870,4 @@ def get_aas_file(filename):
     return send_from_directory(TMP_DIR, filename)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=7430, debug=False, use_reloader=False, use_debugger=False)
+    serve(app, host="0.0.0.0", port=7430)
