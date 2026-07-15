@@ -339,18 +339,19 @@ def broadcast_audio_thread():
             break
     stop_nrsc5()
 
+
 def is_stop_allowed():
     """Checks if the stream is allowed to be stopped/changed based on age and user counts."""
     global stream_start_time, listener_count
+    
     with listener_lock:
-        # If no one is listening or it's dead, anyone can do anything
-        if stream_start_time is None or listener_count <= 1:
+        # Anyone can stop it if the stream hasn't started or listeners are low
+        if stream_start_time is None or listener_count <= 3:
             return True
-        # If multiple people are listening, block unless stream is older than 1 hour
-        stream_age = datetime.now() - stream_start_time
-        if stream_age > timedelta(hours=1):
-            return True
-        return False
+            
+        # Otherwise, check if the stream has been running for more than 5 minutes
+        return (datetime.now() - stream_start_time) > timedelta(minutes=5)
+
 
 def start_nrsc5(preset_id=None, freq=None, program=None, name=None):
     """Spawns nrsc5 directly piped into ffmpeg for direct streaming."""
