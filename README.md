@@ -16,8 +16,9 @@ a python webplayer for HDRadio FM Broadcasts
 - Alternatively, you can run this as a docker container (recommended for enhanced security).
 - I use portainer and just put this as a repository stack with no other tweaks.
 - Presets are for the Seattle market. Adjust the script to your area/tastes.
+- This now let's a second user join in by pressing "Listen In"
+- Anyone can tune to and listen to the current session live at: http://IP:7430/stream.mp3 
 
 # Known bugs:
 - Audio will occasionally cut out due to poor reception. Consider buying a better antenna for your SDR.
-- This only works for one user. However, additional users can tune to http://IP:7430/stream.mp3 and listen to the stream OR http://IP:7430/aas/stream.wav for the raw output
 - No metadata/albumart is attached to the MP3 stream, but you get it on the lockscreen. 
