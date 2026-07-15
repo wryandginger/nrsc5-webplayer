@@ -346,11 +346,11 @@ def is_stop_allowed():
     
     with listener_lock:
         # Anyone can stop it if the stream hasn't started or listeners are low
-        if stream_start_time is None or listener_count <= 3:
+        if stream_start_time is None or listener_count <= 0:
             return True
             
         # Otherwise, check if the stream has been running for more than 5 minutes
-        return (datetime.now() - stream_start_time) > timedelta(minutes=5)
+        return (datetime.now() - stream_start_time) > timedelta(minutes=1)
 
 
 def start_nrsc5(preset_id=None, freq=None, program=None, name=None):
@@ -360,7 +360,7 @@ def start_nrsc5(preset_id=None, freq=None, program=None, name=None):
     # 1. Enforce protection rules if already running
     if ffmpeg_process and ffmpeg_process.poll() is None:
         if not is_stop_allowed():
-            raise Exception("Stream is protected! It has multiple listeners and is under 1 hour old.")
+            raise Exception("Stream is protected! It has multiple listeners.")
     
     stop_nrsc5()
     cleanup_tmp_dir()
@@ -804,7 +804,7 @@ def tune_manual():
 @app.route("/stop")
 def stop():
     if not is_stop_allowed():
-        return jsonify({"status": "error", "message": "Stream is protected! Active listeners present under 1 hour."}), 403
+        return jsonify({"status": "error", "message": "Stream is protected! Active listeners present."}), 403
     stop_nrsc5()
     return jsonify({"status": "success"})
 
