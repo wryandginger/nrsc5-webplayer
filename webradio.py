@@ -275,7 +275,6 @@ nrsc5_process = None
 ffmpeg_process = None
 stream_start_time = None
 listener_count = 0
-listener_lock = threading.Lock()
 
 # Audio broadcast system
 audio_subscribers = []
@@ -292,6 +291,20 @@ def cleanup_tmp_dir():
                     os.remove(old_file)
                 except Exception:
                     pass
+    except Exception:
+        pass
+
+def empty_tmp_dir():
+    """Completely purges all files in the temporary directory to free up disk space."""
+    try:
+        for filename in os.listdir(TMP_DIR):
+            file_path = os.path.join(TMP_DIR, filename)
+            # Only remove actual files, ignoring subdirectories
+            if os.path.isfile(file_path):
+                try:
+                    os.remove(file_path)
+                except Exception:
+                    pass  # Skips files currently locked or open by active processes
     except Exception:
         pass
 
@@ -340,30 +353,13 @@ def broadcast_audio_thread():
     stop_nrsc5()
 
 
-def is_stop_allowed():
-    """Checks if the stream is allowed to be stopped/changed based on age and user counts."""
-    global stream_start_time, listener_count
-    
-    with listener_lock:
-        # Anyone can stop it if the stream hasn't started or listeners are low
-        if stream_start_time is None or listener_count <= 0:
-            return True
-            
-        # Otherwise, check if the stream has been running for more than 5 minutes
-        return (datetime.now() - stream_start_time) > timedelta(minutes=1)
-
-
 def start_nrsc5(preset_id=None, freq=None, program=None, name=None):
     """Spawns nrsc5 directly piped into ffmpeg for direct streaming."""
     global nrsc5_process, ffmpeg_process, latest_metadata, current_preset, stream_start_time
     
-    # 1. Enforce protection rules if already running
-    if ffmpeg_process and ffmpeg_process.poll() is None:
-        if not is_stop_allowed():
-            raise Exception("Stream is protected! It has multiple listeners.")
-    
+    # Force stop any existing stream unconditionally to unlock tuning
     stop_nrsc5()
-    cleanup_tmp_dir()
+    empty_tmp_dir()
 
     if preset_id is not None:
         current_preset = preset_id
@@ -432,6 +428,7 @@ def start_nrsc5(preset_id=None, freq=None, program=None, name=None):
             return True
             
     raise Exception("Failed to launch nrsc5 on all devices.")
+
 
 
 # --- FLASK ROUTES ---
@@ -803,8 +800,6 @@ def tune_manual():
 
 @app.route("/stop")
 def stop():
-    if not is_stop_allowed():
-        return jsonify({"status": "error", "message": "Stream is protected! Active listeners present."}), 403
     stop_nrsc5()
     return jsonify({"status": "success"})
 
@@ -812,19 +807,19 @@ def stop():
 def stream_audio():
     """Generates a non-blocking standalone audio stream using a custom thread queue."""
     import queue
-    global ffmpeg_process
+    global ffmpeg_process, listener_count
     
     if not ffmpeg_process or ffmpeg_process.poll() is not None:
         return "Stream not active. Choose a preset first.", 503
 
     user_queue = queue.Queue(maxsize=50)
     
+    # Safely register the user to receive audio packets
     with subscribers_lock:
         audio_subscribers.append(user_queue)
-        
-    with listener_lock:
-        global listener_count
-        listener_count += 1
+    
+    # Increment global count without a lock
+    listener_count += 1
 
     def generate():
         try:
@@ -839,11 +834,14 @@ def stream_audio():
             with subscribers_lock:
                 if user_queue in audio_subscribers:
                     audio_subscribers.remove(user_queue)
-            with listener_lock:
-                global listener_count
-                listener_count = max(0, listener_count - 1)
+            
+            # Declaring global here fixes the UnboundLocalError
+            global listener_count
+            listener_count = max(0, listener_count - 1)
 
     return Response(generate(), mimetype="audio/mpeg")
+
+
 
 @app.route("/status")
 def status():
