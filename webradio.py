@@ -475,17 +475,19 @@ def index():
         <div class="container">
             <div class="main-panel">
                 <h1>HD Radio Web Radio</h1>
-                <div class="presets">
-                      <label for="preset-select" style="color:#ccc; margin-right:8px;">Preset:</label>
-                      <select id="preset-select" onchange="tunePreset(this.value)">
-                        {% for id, details in presets.items() %}
-                          <option value="{{ id }}" {% if id == current_preset %}selected{% endif %}>
-                            {{ details[2] }} ({{ details[0] }} MHz)
-                          </option>
-                        {% endfor %}
-                      </select>
-                      <button id="start-btn" onclick="startCurrent()">Start</button>
-                    </div>   
+                 <div class="presets">
+                    <label for="preset-select" style="color:#ccc; margin-right:8px;">Preset:</label>
+                    <select id="preset-select" onchange="tunePreset(this.value)">
+                    {% for id, details in presets.items() %}
+                      <option value="{{ id }}" {% if id == current_preset %}selected{% endif %}>
+                        {{ details[2] }} ({{ details[0] }} MHz)
+                        </option>
+                    {% endfor %}
+                    </select>
+                    <button id="start-btn" onclick="startCurrent()">Start</button>
+                    <button id="listen-btn" style="display: none;" onclick="listenIn()">Listen In</button>
+                </div>   
+   
 
                 <div class="manual">
                     <label style="color:#ccc">Freq:</label>
@@ -495,6 +497,7 @@ def index():
                     <button onclick="tuneManualStart()">Manually Tune</button>
                     <button id="stop-btn" onclick="stopStream()">Stop</button>
                 </div>
+
 
                 <div class="player">
                     <div class="album-art" id="art-container">No Art</div>
@@ -718,8 +721,54 @@ def index():
                     });
             }
 
+            function listenIn() {
+                const player = document.getElementById('radio-player');
+                const streamUrl = '/stream.mp3?t=' + Date.now();
+
+                if (player) {
+                    console.log("Connecting directly to the live broadcast feed...");
+                    player.src = streamUrl;
+                    player.load();
+        
+                    // Attempt to play on the current page layout
+                    player.play().catch((error) => {
+                        console.warn("Browser blocked in-page audio autoplay fallback. Launching in a new tab instead:", error);
+                        // Fallback: Open directly in a new window tab if local decoding fails
+                        window.open(streamUrl, '_blank');
+                    });
+                } else {
+                    // Fallback if the radio-player element isn't present in the DOM
+                    window.open(streamUrl, '_blank');
+                }
+            }
+
+
             setInterval(updateStatus, 2000);
             updateStatus();
+
+// This runs independently in the background to automatically swap the Start and Listen In buttons
+setInterval(function() {
+    fetch('/status')
+        .then(response => response.json())
+        .then(data => {
+            const startBtn = document.getElementById('start-btn');
+            const listenBtn = document.getElementById('listen-btn');
+
+            if (startBtn && listenBtn) {
+                if (data.running) {
+                    // Someone is streaming: Hide Start, Show Listen In
+                    startBtn.style.display = 'none';
+                    listenBtn.style.display = 'inline-block';
+                } else {
+                    // No one is streaming: Show Start, Hide Listen In
+                    startBtn.style.display = 'inline-block';
+                    listenBtn.style.display = 'none';
+                }
+            }
+        })
+        .catch(err => console.debug("Status sync quiet skip:", err));
+}, 2000); // Checks every 2 seconds
+
         </script>
     </body>
     </html>
@@ -796,7 +845,13 @@ def stream_audio():
 
 @app.route("/status")
 def status():
+    global ffmpeg_process, latest_metadata
     cleanup_tmp_dir()
+    
+    # Dynamically inject the real-time active process state into the running flag
+    is_active = ffmpeg_process is not None and ffmpeg_process.poll() is None
+    latest_metadata["running"] = is_active
+    
     return jsonify(latest_metadata)
 
 @app.route("/stream_status")
