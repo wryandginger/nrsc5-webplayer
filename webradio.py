@@ -45,7 +45,7 @@ nrsc5_process = None
 latest_metadata = {
     "title": "Unknown Title",
     "artist": "Unknown Artist",
-    "album": "Unknown Album",
+    "album": "",
     "genre": "Unknown Genre",
     "slogan": "",
     "mer": "",
@@ -334,7 +334,16 @@ def stop_nrsc5():
             pass
         nrsc5_process = None
         
-    latest_metadata["running"] = False
+    latest_metadata.update({
+        "title": "Stopped",
+        "artist": "",
+        "album": "",
+        "genre": "",
+        "bitrate": "",
+        "art_url": "",
+        "running": False
+    })
+    _append_log_text("nrsc5 stopped by user.")
     stream_start_time = None
 
 def broadcast_audio_thread():
