@@ -34,7 +34,7 @@ RUN git clone https://github.com/theori-io/nrsc5.git /tmp/nrsc5 \
     && rm -rf /tmp/nrsc5
 
 # Install Python dependencies
-RUN pip install flask
+RUN pip install flask waitress
 
 # If no requirements.txt exists in the repo, uncomment the line below instead:
 # RUN pip install --no-cache-dir flask
