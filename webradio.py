@@ -11,8 +11,8 @@ from flask import Flask, render_template_string, jsonify, send_from_directory, R
 
 # --- CONFIGURATION ---
 PRESETS = {
-    "1": ("88.5", "0", "KNKX/NPR"),  
-    "2": ("88.5", "1", "Jazz24"),
+    "0": ("88.5", "0", "KNKX/NPR"),  
+    "1": ("88.5", "1", "Jazz24"),
     "2": ("91.3", "0", "KBCS/NPR"),
     "3": ("92.5", "0", "Movin' 92.5"),
     "4": ("93.3", "1", "KUBE"),
