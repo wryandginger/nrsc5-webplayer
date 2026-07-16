@@ -37,7 +37,6 @@
 
 # 🪲 Known bugs/issues:
 - Any visitor to the webradio can stop the stream. (A killjoy switch was tested, but it worked too well.)
-- Arbitrary code **might** be able to be injected in an http request to manually tune (currently investigating)
 - No metadata/albumart is attached to the MP3 stream, (Working on iOS lockscreens tho!).
 - Traffic maps and album art stay after stopping stream. (This is semi-intentional so active users keep loaded traffic maps until a new one generates)
 - Some browsers/platforms don't show metadata.
