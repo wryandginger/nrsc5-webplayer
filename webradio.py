@@ -67,7 +67,7 @@ def parse_nrsc5_output(pipe):
     mer_regex = re.compile(r"MER:\s*(.*)")
     bitrate_regex = re.compile(r"Audio bit rate:\s*(.*)")
 
-    lot_regex = re.compile(r"LOT file:\s+port=(\w+)\s+lot=(\d+)\s+name=([a-zA-Z0-9_\-\.]+)\s+size=(\d+)\s+mime=([0-9A-F]+)")
+    lot_regex = re.compile(r"LOT file:\s+port=(\w+)\s+lot=(\d+)\s+name=(\S+)\s+size=(\d+)\s+mime=([0-9A-F]+)")
     tmt_regex = re.compile(r"LOT file:\s+port=(\w+)\s+lot=(\d+)\s+name=(TMT_[a-zA-Z0-9_\-\.]+)\s+size=(\d+)\s+mime=([0-9A-F]+)")
     here_regex = re.compile(r"HERE Image:\s+type=(\w+).*?name=(trafficMap_[0-3]_[0-3]_[^,\s]+).*?size=(\d+)")   
 
