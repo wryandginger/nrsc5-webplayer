@@ -13,6 +13,7 @@ from flask import Flask, render_template_string, jsonify, send_from_directory, R
 PRESETS = {
     "1": ("88.5", "0", "KNKX/NPR"),  
     "2": ("88.5", "1", "Jazz24"),
+    "2": ("91.3", "0", "KBCS/NPR"),
     "3": ("92.5", "0", "Movin' 92.5"),
     "4": ("93.3", "1", "KUBE"),
     "5": ("94.1", "0", "Emma"),
@@ -56,9 +57,21 @@ latest_metadata = {
     "running": False
 }
 
-def parse_nrsc5_output(pipe):
+def parse_nrsc5_output(pipe, program):
     global latest_metadata
 
+    # Get the right images
+    prog_idx = int(program)
+    art_port = f"{0x0800 + (prog_idx * 2):04x}"      
+    logo_port = f"{0x0801 + (prog_idx * 2):04x}"     
+    art_port_alt = f"{0x0407 + prog_idx:04x}"   
+    logo_port_alt = f"{0x040a + prog_idx:04x}" 
+    logo_port_alt2 = f"{0x0411 + prog_idx:04x}" 
+    logo_port_dec = str(1001 + (prog_idx * 2))
+    ports_pattern = f"{art_port}|{logo_port}|{art_port_alt}|{logo_port_alt}|{logo_port_alt2}|{logo_port_dec}"
+    
+    
+    # Search the metadata
     title_regex = re.compile(r"Title:\s*(.*)")
     artist_regex = re.compile(r"Artist:\s*(.*)")
     album_regex = re.compile(r"Album:\s*(.*)")
@@ -67,9 +80,10 @@ def parse_nrsc5_output(pipe):
     mer_regex = re.compile(r"MER:\s*(.*)")
     bitrate_regex = re.compile(r"Audio bit rate:\s*(.*)")
 
-    lot_regex = re.compile(r"LOT file:\s+port=(\w+)\s+lot=(\d+)\s+name=(\S+)\s+size=(\d+)\s+mime=([0-9A-F]+)")
-    tmt_regex = re.compile(r"LOT file:\s+port=(\w+)\s+lot=(\d+)\s+name=(TMT_[a-zA-Z0-9_\-\.]+)\s+size=(\d+)\s+mime=([0-9A-F]+)")
-    here_regex = re.compile(r"HERE Image:\s+type=(\w+).*?name=(trafficMap_[0-3]_[0-3]_[^,\s]+).*?size=(\d+)")   
+    lot_regex = re.compile(rf"LOT file:\s+port=({ports_pattern})\s+lot=(\d+)\s+name=(\S+)\s+size=(\d+)\s+mime=([0-9A-F]+)")
+    tmt_regex = re.compile(r"LOT file:\s+port=([0-9a-f]{4})\s+lot=(\d+)\s+name=(TMT_\S+)\s+size=(\d+)\s+mime=([0-9A-F]+)")
+    here_regex = re.compile(r"HERE Image:\s+type=([0-9a-fA-F]+)\s+name=(trafficMap_[0-3]_[0-3]_\S+)\s+size=(\d+)")
+
 
     for line in iter(pipe.readline, ""):
         if not line:
@@ -186,8 +200,8 @@ def parse_nrsc5_output(pipe):
         # Check for regular LOT files that are NOT TMT (album art candidates)
         lot_match = lot_regex.search(line)
         if lot_match and not tmt_match:
-            lot_num = lot_match.group(2).strip()
-            filename = lot_match.group(3).strip()
+            lot_num = (lot_match.group(2) or lot_match.group(5)).strip()
+            filename = (lot_match.group(3) or lot_match.group(6)).strip()
 
             # Only set as album art if filename has image extension
             if filename.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp')):
@@ -213,7 +227,6 @@ def _append_log_text(txt):
         latest_metadata["raw_log"] = latest_metadata["raw_log"][-400:]
 
 def start_nrsc5(preset_id=None, freq=None, program=None, name=None):
-
     global nrsc5_process, latest_metadata, current_preset
 
     # Ensure nrsc5 exists
@@ -244,6 +257,7 @@ def start_nrsc5(preset_id=None, freq=None, program=None, name=None):
             raise ValueError("freq and program are required for manual tuning")
         name = name or f"{freq} / ch {program}"
         current_preset = None
+
 
     if nrsc5_process:
         try:
@@ -283,9 +297,17 @@ subscribers_lock = threading.Lock()
 def cleanup_tmp_dir():
     """Periodically keep only the 20 newest files to prevent disk bloating."""
     try:
-        files = [os.path.join(TMP_DIR, f) for f in os.listdir(TMP_DIR) if os.path.isfile(os.path.join(TMP_DIR, f))]
+        # Get full paths for all items in the directory
+        all_paths = [os.path.join(TMP_DIR, f) for f in os.listdir(TMP_DIR)]
+        # Filter down to files only
+        files = [p for p in all_paths if os.path.isfile(p)]
+        
+        # Sort files: oldest first, newest last
         files.sort(key=os.path.getmtime)
+        
+        # If we have more than 20 files, delete the oldest ones
         if len(files) > 20:
+            # files[:-20] correctly grabs everything from index 0 up to the last 20 items
             for old_file in files[:-20]:
                 try:
                     os.remove(old_file)
@@ -299,16 +321,16 @@ def empty_tmp_dir():
     try:
         for filename in os.listdir(TMP_DIR):
             file_path = os.path.join(TMP_DIR, filename)
-            # Only remove actual files, ignoring subdirectories
             if os.path.isfile(file_path):
                 try:
                     os.remove(file_path)
                 except Exception:
-                    pass  # Skips files currently locked or open by active processes
+                    pass  
     except Exception:
         pass
 
-def stop_nrsc5():
+
+def stop_nrsc5(silent=False):  # Added 'silent' argument to prevent duplicate log clutter
     """Safely kills both nrsc5 and ffmpeg processes."""
     global nrsc5_process, ffmpeg_process, latest_metadata, stream_start_time
     
@@ -343,7 +365,9 @@ def stop_nrsc5():
         "art_url": "",
         "running": False
     })
-    _append_log_text("nrsc5 stopped by user.")
+    
+    if not silent:
+        _append_log_text("nrsc5 stopped by user.")
     stream_start_time = None
 
 def broadcast_audio_thread():
@@ -366,9 +390,22 @@ def start_nrsc5(preset_id=None, freq=None, program=None, name=None):
     """Spawns nrsc5 directly piped into ffmpeg for direct streaming."""
     global nrsc5_process, ffmpeg_process, latest_metadata, current_preset, stream_start_time
     
-    # Force stop any existing stream unconditionally to unlock tuning
-    stop_nrsc5()
+    # 1. Silently stop any running stream to prevent duplicate "Stopped" log spam
+    stop_nrsc5(silent=True)
     empty_tmp_dir()
+
+    # 2. Update UI metadata state to "Loading..." instantly while the device spins up
+    latest_metadata.update({
+        "title": "Loading...",
+        "artist": "Tuning receiver...",
+        "album": "",
+        "genre": "",
+        "slogan": "",
+        "mer": "",
+        "bitrate": "",
+        "art_url": "",
+        "running": True
+    })
 
     if preset_id is not None:
         current_preset = preset_id
@@ -406,6 +443,7 @@ def start_nrsc5(preset_id=None, freq=None, program=None, name=None):
 
         if p.poll() is None:
             nrsc5_process = p
+            # Keep running set to True here as processing proceeds
             latest_metadata["running"] = True
             stream_start_time = datetime.now()
             
@@ -430,15 +468,15 @@ def start_nrsc5(preset_id=None, freq=None, program=None, name=None):
 
             try:
                 stderr_text_wrapper = os.fdopen(nrsc5_process.stderr.fileno(), 'r', errors='ignore')
-                threading.Thread(target=parse_nrsc5_output, args=(stderr_text_wrapper,), daemon=True).start()
+                threading.Thread(target=parse_nrsc5_output, args=(stderr_text_wrapper, program), daemon=True).start()
             except Exception:
                 _append_log_text("warning: failed to spawn stderr parser thread")
             
             return True
             
+    # If all tuning loop iterations fail, revert state completely
+    latest_metadata.update({"title": "Error", "artist": "Failed to open device", "running": False})
     raise Exception("Failed to launch nrsc5 on all devices.")
-
-
 
 # --- FLASK ROUTES ---
 @app.route("/")
@@ -523,10 +561,16 @@ def index():
                 <div class="tmt-panel">
                 <h3>Traffic</h3>
                 <div class="tmt-gallery" id="tmt-container"></div>
-            </div>
-                <h3>Terminal Output</h3>
-                <div class="terminal" id="log-container"></div>
-            </div>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <h3>Terminal Output</h3>
+                        <!-- Added Copy Button -->
+                        <button id="copy-log-btn" class="btn btn-secondary" onclick="copyTerminalOutput()">
+                            Copy Logs
+                        </button>
+                    </div>
+                    <div class="terminal" id="log-container"></div>
+                </div>
 
 
         </div>
@@ -680,8 +724,8 @@ def index():
                                 let rowA, colA, rowB, colB;
 
                                 // Detect format based on parts length or specific content
-                                // New format: 1783727236_trafficMap_1_0_4t25.png (5+ parts usually, Row@2, Col@3)
-                                // Old format: 640(0)_TMT(1)_02dgt3(2)_1(3)_3(4)_date... (Row@3, Col@4)
+                                // HERE Format: 1783727236_trafficMap_1_0_4t25.png (5+ parts usually, Row@2, Col@3)
+                                // TTN format: 640(0)_TMT(1)_02dgt3(2)_1(3)_3(4)_date... (Row@3, Col@4)
         
                                 // Heuristic: If parts[1] contains "trafficMap", it's the new format
                                 if (partsA[1] && partsA[1].includes('trafficMap')) {
@@ -750,6 +794,29 @@ def index():
                 }
             }
 
+            function copyTerminalOutput() {
+                const logContainer = document.getElementById('log-container');
+                const copyBtn = document.getElementById('copy-log-btn');
+    
+                // Get all the text inside the terminal div
+                const logText = logContainer.innerText || logContainer.textContent;
+    
+               // Use the Clipboard API to copy the text
+               navigator.clipboard.writeText(logText).then(() => {
+                   // Visual feedback: change button text temporarily
+                   const originalText = copyBtn.innerText;
+                   copyBtn.innerText = 'Copied!';
+                   copyBtn.style.backgroundColor = '#28a745'; // make it green
+        
+                   setTimeout(() => {
+                       copyBtn.innerText = originalText;
+                       copyBtn.style.backgroundColor = ''; // Reset style
+                   }, 2000);
+               }).catch(err => {
+                   console.error('Failed to copy logs: ', err);
+                   alert('Could not copy logs automatically. Please manually select and copy.');
+               });
+            }
 
             setInterval(updateStatus, 2000);
             updateStatus();
@@ -795,17 +862,28 @@ def tune(preset_id):
 
 @app.route("/tune_manual")
 def tune_manual():
-    freq = request.args.get("freq", "").strip()
-    program = request.args.get("program", "").strip()
+    raw_freq = request.args.get("freq", "").strip()
+    raw_program = request.args.get("program", "").strip()
 
-    if not freq or program == "":
+    if not raw_freq or raw_program == "":
         return jsonify({"status": "error", "message": "freq and program are required"}), 400
 
     try:
+        # STRICT TYPE CASTING: This completely neutralizes command injection.
+        # A float or int cannot contain shell execution characters like ;, &, |, or spaces.
+        freq = float(raw_freq)
+        program = int(raw_program)
+        
+    except (ValueError, TypeError):
+        return jsonify({"status": "error", "message": "Frequency must be a decimal and Program must be an integer"}), 400
+
+    try:
+        # Pass the sanitized, safely typed numbers into the function
         start_nrsc5(preset_id=None, freq=freq, program=program, name=None)
         return jsonify({"status": "success", "freq": freq, "program": program})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 403 if "protected" in str(e) else 500
+
 
 @app.route("/stop")
 def stop():
