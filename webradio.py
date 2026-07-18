@@ -41,7 +41,7 @@ os.chmod(TMP_DIR, 0o777)
 
 app = Flask(__name__)
 
-current_preset = "1"
+current_preset = "0"
 nrsc5_process = None
 latest_metadata = {
     "title": "Unknown Title",
@@ -82,7 +82,7 @@ def parse_nrsc5_output(pipe, program):
 
     lot_regex = re.compile(rf"LOT file:\s+port=({ports_pattern})\s+lot=(\d+)\s+name=(\S+)\s+size=(\d+)\s+mime=([0-9A-F]+)")
     tmt_regex = re.compile(r"LOT file:\s+port=([0-9a-f]{4})\s+lot=(\d+)\s+name=(TMT_\S+)\s+size=(\d+)\s+mime=([0-9A-F]+)")
-    here_regex = re.compile(r"HERE Image:\s+type=([0-9a-fA-F]+)\s+name=(trafficMap_[0-3]_[0-3]_\S+)\s+size=(\d+)")
+    here_regex = re.compile(r"HERE Image:\s+type=(?P<type>\w+).*?"r"seq=(?P<seq>\d+).*?"r"time=(?P<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z).*?"r"name=(?P<filename>trafficMap_[0-3]_[0-3]_[^,\s]+).*?"r"size=(?P<size>\d+)",re.IGNORECASE)
 
 
     for line in iter(pipe.readline, ""):
@@ -121,61 +121,18 @@ def parse_nrsc5_output(pipe, program):
         if br_match:
             latest_metadata["bitrate"] = br_match.group(1).strip()
 
-        # --- Helper Function to Identify Duplicates ---
-        def get_semantic_key(filename):
-            """
-            Strips the leading lot number (digits + underscore) to find the base filename.
-            Example: '330_TMT_...' becomes 'TMT_...'
-                     '1782693289_trafficMap_...' becomes 'trafficMap_...'
-            """
-            match = re.match(r'^\d+_(.*)', filename)
-            return match.group(1) if match else filename
-
-        def add_file_deduplicated(file_list, new_file, max_limit=9):
-            """
-            Adds new_file to file_list, removing any existing file with the same 
-            semantic key (treating the new one as the newer duplicate).
-            """
-            new_key = get_semantic_key(new_file)
-    
-            # Filter out any existing file that matches the new file's semantic key
-            # This effectively removes the 'older' duplicate
-            filtered_list = [f for f in file_list if get_semantic_key(f) != new_key]
-    
-            # Append the new (newer) file
-            filtered_list.append(new_file)
-    
-            # Enforce the max limit (keep the most recent 9)
-            if len(filtered_list) > max_limit:
-                filtered_list.pop(0)
-        
-            return filtered_list
-
         # Check for TMT files (traffic/metadata files - keep for display)
         tmt_match = tmt_regex.search(line)
         if tmt_match:
             lot_num = tmt_match.group(2).strip()
             filename = tmt_match.group(3).strip()
             actual_filename = f"{lot_num}_{filename}"
-    
-            # Use the helper function instead of direct append
-            latest_metadata["tmt_files"] = add_file_deduplicated(
-                latest_metadata["tmt_files"], 
-                actual_filename, 
-                max_limit=9
-            )
+            latest_metadata["tmt_files"].append(actual_filename)
+            if len(latest_metadata["tmt_files"]) > 9:
+                latest_metadata["tmt_files"].pop(0)
 
-        # Checks for HERE traffic files --keep for display
-        here_regex = re.compile(
-            r"HERE Image:\s+type=(?P<type>\w+).*?"
-            r"seq=(?P<seq>\d+).*?"  # seq is captured but NOT used in filename
-            r"time=(?P<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z).*?"
-            r"name=(?P<filename>trafficMap_[0-3]_[0-3]_[^,\s]+).*?"
-            r"size=(?P<size>\d+)",
-            re.IGNORECASE
-        )
 
-        # Check for Traffic Map files
+        # Check for HERE Traffic Map files
         tmt_match = here_regex.search(line)
         if tmt_match:
             # Convert ISO timestamp to Unix timestamp
@@ -187,15 +144,9 @@ def parse_nrsc5_output(pipe, program):
             filename = tmt_match.group("filename").strip()
             # Construct the full filename with Unix timestamp prefix
             actual_filename = f"{unix_timestamp}_{filename}"
-
-            # Use the helper function instead of direct append
-            latest_metadata["tmt_files"] = add_file_deduplicated(
-                latest_metadata["tmt_files"], 
-                actual_filename, 
-                max_limit=9
-            )
-
-
+            latest_metadata["tmt_files"].append(actual_filename)
+            if len(latest_metadata["tmt_files"]) > 9:
+                latest_metadata["tmt_files"].pop(0)
 
         # Check for regular LOT files that are NOT TMT (album art candidates)
         lot_match = lot_regex.search(line)
@@ -222,9 +173,9 @@ def _append_log_text(txt):
         return
     for ln in txt.splitlines():
         latest_metadata["raw_log"].append(ln.strip())
-    # Keep last N lines
-    if len(latest_metadata["raw_log"]) > 400:
-        latest_metadata["raw_log"] = latest_metadata["raw_log"][-400:]
+    # Keep last 200 lines
+    if len(latest_metadata["raw_log"]) > 200:
+        latest_metadata["raw_log"] = latest_metadata["raw_log"][-200:]
 
 def start_nrsc5(preset_id=None, freq=None, program=None, name=None):
     global nrsc5_process, latest_metadata, current_preset
@@ -295,7 +246,7 @@ audio_subscribers = []
 subscribers_lock = threading.Lock()
 
 def cleanup_tmp_dir():
-    """Periodically keep only the 20 newest files to prevent disk bloating."""
+    """Periodically keep only the 25 newest files to prevent disk bloating."""
     try:
         # Get full paths for all items in the directory
         all_paths = [os.path.join(TMP_DIR, f) for f in os.listdir(TMP_DIR)]
@@ -305,10 +256,10 @@ def cleanup_tmp_dir():
         # Sort files: oldest first, newest last
         files.sort(key=os.path.getmtime)
         
-        # If we have more than 20 files, delete the oldest ones
-        if len(files) > 20:
-            # files[:-20] correctly grabs everything from index 0 up to the last 20 items
-            for old_file in files[:-20]:
+        # If we have more than 25 files, delete the oldest ones
+        if len(files) > 25:
+            # files[:-25] correctly grabs everything from index 0 up to the last 50 items
+            for old_file in files[:-25]:
                 try:
                     os.remove(old_file)
                 except Exception:
@@ -330,14 +281,14 @@ def empty_tmp_dir():
         pass
 
 
-def stop_nrsc5(silent=False):  # Added 'silent' argument to prevent duplicate log clutter
+def stop_nrsc5(silent=False):  
     """Safely kills both nrsc5 and ffmpeg processes."""
     global nrsc5_process, ffmpeg_process, latest_metadata, stream_start_time
     
     # Close all user broadcast queues
     with subscribers_lock:
         for q in audio_subscribers:
-            q.put(None)  # Signal EOF to generator threads
+            q.put(None)  
         audio_subscribers.clear()
 
     if ffmpeg_process:
@@ -390,11 +341,9 @@ def start_nrsc5(preset_id=None, freq=None, program=None, name=None):
     """Spawns nrsc5 directly piped into ffmpeg for direct streaming."""
     global nrsc5_process, ffmpeg_process, latest_metadata, current_preset, stream_start_time
     
-    # 1. Silently stop any running stream to prevent duplicate "Stopped" log spam
     stop_nrsc5(silent=True)
     empty_tmp_dir()
 
-    # 2. Update UI metadata state to "Loading..." instantly while the device spins up
     latest_metadata.update({
         "title": "Loading...",
         "artist": "Tuning receiver...",
@@ -443,7 +392,6 @@ def start_nrsc5(preset_id=None, freq=None, program=None, name=None):
 
         if p.poll() is None:
             nrsc5_process = p
-            # Keep running set to True here as processing proceeds
             latest_metadata["running"] = True
             stream_start_time = datetime.now()
             
